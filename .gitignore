@@ -1,0 +1,5 @@
+.env
+.mypy_cache/
+__pycache__/
+copilot.log
+hoja_de_vida.md
