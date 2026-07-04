@@ -17,6 +17,21 @@
 
 ## Estructura del proyecto
 
+```text
+├── copilot/             # Paquete principal modular
+│   ├── core/            # Lógica central (AppController, Memoria, LLM Client, Config)
+│   ├── services/        # Workers de fondo (Audio, Gemini, STT, Coach, VSCode)
+│   └── ui/              # Componentes visuales PySide6 (MainWindow, Theme, TitleBar)
+├── context/             # Carpeta de contexto RAG (pon tu resume.md y otros .md aquí)
+├── main.py              # Puerta de entrada en consola
+├── LanzarCopilot.vbs    # Ejecutable invisible que lanza la App sin terminal
+├── requirements.txt     # Dependencias Python
+└── ARCHITECTURE.md      # Detalles profundos del diseño interno
+```
+
+---
+
+## Requisitos y Dependencias
 
 - **Python 3.10+** (Windows 10/11 requerido para WASAPI Loopback).
 - API Key de OpenRouter → [Obtenerla aquí](https://openrouter.ai/). (Se configura en el `.env` como `OPENROUTER_API_KEY`).
