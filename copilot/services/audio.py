@@ -8,7 +8,7 @@ from io import BytesIO
 from collections import deque
 from typing import Optional, Callable
 
-from copilot.config import (
+from copilot.core.config import (
     VAD_BLOCK_DURATION,
     VAD_SILENCE_TIMEOUT,
     VAD_MAX_DURATION,
@@ -16,7 +16,7 @@ from copilot.config import (
     SILENCE_THRESHOLD,
     SAMPLE_RATE,
 )
-from copilot.logger import get_logger
+from copilot.core.logger import get_logger
 
 logger = get_logger(__name__)
 

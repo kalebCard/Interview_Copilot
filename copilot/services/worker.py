@@ -4,10 +4,11 @@ import queue
 import base64
 import io
 from typing import Callable
-from copilot.logger import get_logger
-from copilot.memory import add_interaction, get_recent_context
-from copilot.prompts import CLASSIFIER_PROMPT, PROMPTS
-from copilot.config import build_system_prompt
+from copilot.core.logger import get_logger
+from copilot.core.memory import add_interaction, get_recent_context
+from copilot.core.prompts import CLASSIFIER_PROMPT, PROMPTS
+from copilot.core.config import build_system_prompt
+from copilot.core.llm_client import LLMClient
 
 logger = get_logger(__name__)
 
@@ -41,16 +42,10 @@ class GeminiWorker(threading.Thread):
 
     def run(self) -> None:
         try:
-            import openai
-        except ImportError:
-            self.error_callback("openai no instalado. Ejecuta: pip install openai")
-            return
-        client_or = openai.OpenAI(base_url="https://openrouter.ai/api/v1", api_key=self.api_key)
-            
-        if self.api_key:
+            llm_client = LLMClient(api_key=self.api_key)
             logger.info(f"GeminiWorker iniciado con API key válida — modelo: {self.model_name}")
-        else:
-            self.error_callback("API key inválida")
+        except Exception as e:
+            self.error_callback(str(e))
             return
 
         while not self._stop_event.is_set():
@@ -125,7 +120,7 @@ class GeminiWorker(threading.Thread):
                     
                 # 1. Classification Pre-flight
                 try:
-                    class_resp = client_or.chat.completions.create(
+                    class_resp = llm_client.generate_chat(
                         model="google/gemini-2.5-flash",
                         messages=[
                             {"role": "system", "content": CLASSIFIER_PROMPT},
@@ -143,7 +138,7 @@ class GeminiWorker(threading.Thread):
                 dynamic_system_prompt = build_system_prompt(self.context_content, category_prompt)
                 
                 # 2. Main Generation
-                resp = client_or.chat.completions.create(
+                resp = llm_client.generate_chat(
                     model=self.model_name,
                     messages=[
                         {
@@ -180,10 +175,6 @@ class GeminiWorker(threading.Thread):
                 err_msg = str(api_err).lower()
                 if "safety" in err_msg or "block" in err_msg:
                     self.error_callback("Audio ignorado: bloqueado por filtros de seguridad de Gemini.")
-                elif "429" in err_msg or "quota" in err_msg or "too many requests" in err_msg:
-                    self.error_callback("Límite de API alcanzado (429). Pausando 10 segundos...")
-                    import time
-                    time.sleep(10)
                 else:
                     self.error_callback(f"Error de la API: {api_err}")
 

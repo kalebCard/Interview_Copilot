@@ -4,7 +4,7 @@ import queue
 import io
 import re
 import speech_recognition as sr
-from copilot.logger import get_logger
+from copilot.core.logger import get_logger
 
 logger = get_logger(__name__)
 

@@ -1,7 +1,6 @@
-from copilot.memory import get_session_history
-from copilot.logger import get_logger
-from openai import OpenAI
-import os
+from copilot.core.memory import get_session_history
+from copilot.core.logger import get_logger
+from copilot.core.llm_client import LLMClient
 
 logger = get_logger(__name__)
 
@@ -27,11 +26,8 @@ TRANSCRIPCIÓN:
 """
     
     try:
-        client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=os.environ.get("OPENROUTER_API_KEY", "")
-        )
-        resp = client.chat.completions.create(
+        client = LLMClient()
+        resp = client.generate_chat(
             model="google/gemini-2.5-flash",
             messages=[{"role": "user", "content": prompt}]
         )

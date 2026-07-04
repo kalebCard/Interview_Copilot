@@ -2,7 +2,7 @@
 import sys
 
 from copilot.check import run_check
-from copilot.ui import run_app
+from copilot.ui.main_window import run_app
 
 def main() -> None:
 

@@ -1,4 +1,3 @@
-
 import sys
 import os
 import signal
@@ -8,7 +7,6 @@ import re
 import ctypes
 import keyboard
 import threading
-from typing import Optional
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -16,134 +14,19 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QTimer, QObject, Signal
 
-from copilot.config import (
-    load_context,
-    build_system_prompt,
-)
-from copilot.audio import AudioCapture
-from copilot.worker import GeminiWorker
-from copilot.translator import TranscriptionWorker
-from copilot.logger import get_logger
+from copilot.core.logger import get_logger
+from copilot.ui.theme import COLORS, MAIN_STYLE
+from copilot.ui.title_bar import TitleBar
+from copilot.core.app_controller import AppController
 
 logger = get_logger(__name__)
 
-COLORS = {
-    "bg":           "#0f1117",
-    "surface":      "#1a1d27",
-    "surface2":     "#22273a",
-    "border":       "#2d3148",
-    "accent_blue":  "#38bdf8",
-    "accent_amber": "#f59e0b",
-    "accent_green": "#22c55e",
-    "accent_red":   "#ef4444",
-    "text":         "#e2e8f0",
-    "text_muted":   "#64748b",
-    "title_bar":    "#080b12",
-}
-
-MAIN_STYLE = f"""
-QMainWindow, QWidget#centralWidget {{
-    background-color: rgba(15, 17, 23, 245);
-}}
-QWidget {{
-    color: {COLORS["text"]};
-    font-family: "Segoe UI";
-}}
-QComboBox {{
-    background-color: {COLORS["surface2"]};
-    color: {COLORS["text"]};
-    border: 1px solid {COLORS["border"]};
-    border-radius: 4px;
-    padding: 2px 4px;
-}}
-QComboBox::drop-down {{
-    border: none;
-}}
-QTextBrowser {{
-    background-color: rgba(10, 12, 18, 150);
-    border: 1px solid {COLORS["border"]};
-    border-radius: 8px;
-}}
-QScrollBar:vertical {{
-    background-color: {COLORS["bg"]};
-    width: 10px;
-    margin: 0px;
-}}
-QScrollBar::handle:vertical {{
-    background-color: {COLORS["surface2"]};
-    min-height: 20px;
-    border-radius: 4px;
-}}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-    height: 0px;
-}}
-"""
-
 class WorkerSignals(QObject):
-    gemini_result = Signal(str)
-    gemini_error = Signal(str)
-    stt_result = Signal(str)
-    stt_error = Signal(str)
-    status_update = Signal(str, str)
     toggle_visibility = Signal()
-
-class TitleBar(QFrame):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.parent_window = parent
-        self.setFixedHeight(40)
-        self.setStyleSheet("background-color: rgba(8, 11, 18, 220);")
-        
-        self._drag_pos = None
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 0, 10, 0)
-        layout.setSpacing(6)
-
-        lbl_icon = QLabel("⬡")
-        lbl_icon.setStyleSheet(f"color: {COLORS['accent_blue']}; font-size: 16pt;")
-        layout.addWidget(lbl_icon)
-
-        lbl_title = QLabel("Interview Copilot")
-        lbl_title.setStyleSheet("font-weight: bold; font-size: 10pt;")
-        layout.addWidget(lbl_title)
-
-
-        layout.addStretch()
-
-        self.spinner_label = QLabel("")
-        self.spinner_label.setStyleSheet(f"color: {COLORS['accent_blue']}; font-family: Consolas; font-size: 10pt;")
-        layout.addWidget(self.spinner_label)
-
-        btn_min = QPushButton("─")
-        btn_min.setFixedSize(30, 30)
-        btn_min.setCursor(Qt.PointingHandCursor)
-        btn_min.setStyleSheet(f"""
-            QPushButton {{ background-color: transparent; color: {COLORS["text_muted"]}; border: none; }}
-            QPushButton:hover {{ background-color: {COLORS["border"]}; color: white; }}
-        """)
-        btn_min.clicked.connect(self.parent_window.showMinimized)
-        layout.addWidget(btn_min)
-
-        btn_close = QPushButton("✕")
-        btn_close.setFixedSize(30, 30)
-        btn_close.setCursor(Qt.PointingHandCursor)
-        btn_close.setStyleSheet(f"""
-            QPushButton {{ background-color: transparent; color: {COLORS["text_muted"]}; border: none; }}
-            QPushButton:hover {{ background-color: {COLORS["accent_red"]}; color: white; }}
-        """)
-        btn_close.clicked.connect(self.parent_window.close)
-        layout.addWidget(btn_close)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.parent_window.frameGeometry().topLeft()
-            event.accept()
-
-    def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.LeftButton and self._drag_pos is not None:
-            self.parent_window.move(event.globalPosition().toPoint() - self._drag_pos)
-            event.accept()
+    display_response = Signal(str)
+    show_error = Signal(str)
+    status_update = Signal(str, str)
+    enqueue_subtitle = Signal(str)
 
 class CopilotApp(QMainWindow):
     SPINNER_FRAMES = ["● ○ ○", "○ ● ○", "○ ○ ●", "○ ● ○"]
@@ -151,31 +34,27 @@ class CopilotApp(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.audio_queue = queue.Queue(maxsize=2)
-        self.stt_queue = queue.Queue(maxsize=10)
-        self.image_queue = queue.Queue(maxsize=1)
-
-        self.audio_thread: Optional[AudioCapture] = None
-        self.gemini_thread: Optional[GeminiWorker] = None
-        self.transcription_thread: Optional[TranscriptionWorker] = None
-        
-        self.is_running_stt = False
-        self.is_running_ai = False
-        self.current_code_state = ""
-        self.code_state_lock = threading.Lock()
-
         self._spinner_idx = 0
         
         self.spinner_timer = QTimer(self)
         self.spinner_timer.timeout.connect(self._tick_spinner)
 
-        self.context_content = load_context()
-
         self.signals = WorkerSignals()
-        self.signals.gemini_result.connect(self._display_response)
-        self.signals.gemini_error.connect(self._show_error)
-        self.signals.stt_result.connect(self._enqueue_subtitle)
-        
+        self.signals.toggle_visibility.connect(self._on_toggle_visibility)
+        self.signals.display_response.connect(self._display_response)
+        self.signals.show_error.connect(self._show_error)
+        self.signals.status_update.connect(self._set_status)
+        self.signals.enqueue_subtitle.connect(self._enqueue_subtitle)
+
+        # App Controller takes care of business logic
+        self.controller = AppController(
+            gemini_result_cb=lambda text: self.signals.display_response.emit(text),
+            gemini_error_cb=lambda err: self.signals.show_error.emit(err),
+            stt_result_cb=lambda text: self.signals.enqueue_subtitle.emit(text),
+            stt_error_cb=lambda err: self.signals.show_error.emit(err),
+            status_update_cb=lambda msg, state: self.signals.status_update.emit(msg, state)
+        )
+
         self.subtitle_queue_internal = queue.Queue()
         self.karaoke_timer = QTimer(self)
         self.karaoke_timer.setInterval(80)
@@ -185,9 +64,6 @@ class CopilotApp(QMainWindow):
         self.subtitle_idle_timer.setInterval(3000)
         self.subtitle_idle_timer.setSingleShot(True)
         self.subtitle_idle_timer.timeout.connect(self._clear_subtitle)
-        self.signals.stt_error.connect(self._show_error)
-        self.signals.status_update.connect(self._set_status)
-        self.signals.toggle_visibility.connect(self._on_toggle_visibility)
 
         try:
             keyboard.add_hotkey('ctrl+shift+h', lambda: self.signals.toggle_visibility.emit())
@@ -196,19 +72,6 @@ class CopilotApp(QMainWindow):
 
         self._configure_window()
         self._build_ui()
-
-    def _get_code_state_safe(self) -> str:
-        from copilot.vscode import read_vscode_state
-        vscode_state = read_vscode_state()
-        
-        with self.code_state_lock:
-            if vscode_state:
-                return vscode_state
-            return self.current_code_state
-
-    def _set_code_state_safe(self, code):
-        with self.code_state_lock:
-            self.current_code_state = code
 
     def _configure_window(self):
         self.setWindowTitle("Interview Copilot")
@@ -406,15 +269,18 @@ class CopilotApp(QMainWindow):
             self.lbl_status_dot.setStyleSheet(f"color: {COLORS['accent_red']}; font-size: 14pt;")
         else:
             self.lbl_status_dot.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 14pt;")
+            if not self.controller.is_running_ai and not self.controller.is_running_stt:
+                self.spinner_timer.stop()
+                self.title_bar.spinner_label.setText("")
 
     def _run_coach(self):
         self._append_system_msg("Generando reporte de Coach. Por favor espera...")
-        def run():
-            from copilot.coach import generate_coach_report
-            report = generate_coach_report("default_session")
-            # Mostrar en hilo principal
+        def display_report(report: str):
             QTimer.singleShot(0, lambda: self._display_coach_report(report))
-        threading.Thread(target=run, daemon=True).start()
+        self.controller.run_coach(display_report)
+
+    def _append_system_msg(self, msg: str):
+        self.text_area.append(f"<div style='color: {COLORS['accent_blue']}; margin-bottom: 15px;'>ℹ️ {msg}</div>")
 
     def _display_coach_report(self, report: str):
         formatted = f"""
@@ -428,7 +294,7 @@ class CopilotApp(QMainWindow):
         self.text_area.append(formatted)
 
     def _tick_spinner(self):
-        if self.is_running_ai or self.is_running_stt:
+        if self.controller.is_running_ai or self.controller.is_running_stt:
             self._spinner_idx = (self._spinner_idx + 1) % len(self.SPINNER_FRAMES)
             self.title_bar.spinner_label.setText(self.SPINNER_FRAMES[self._spinner_idx])
         else:
@@ -446,7 +312,6 @@ class CopilotApp(QMainWindow):
             
             words = current_text.split()
             if len(words) > 35:
-
                 current_text = " ".join(words[-20:])
                 
             new_text = f"{current_text} {chunk}".strip()
@@ -463,83 +328,7 @@ class CopilotApp(QMainWindow):
         self.lbl_subtitle.setText("")
         self.lbl_subtitle.hide()
 
-    def _toggle_stt(self):
-        if self.is_running_stt:
-            self._stop_stt()
-        else:
-            self._start_stt()
-
-    def _toggle_ai(self):
-        if self.is_running_ai:
-            self._stop_ai()
-        else:
-            self._start_ai()
-
-    def _start_stt(self):
-        self._ensure_audio_capture()
-        self.is_running_stt = True
-        self.btn_stt.setText("■ Stop Subtítulos")
-        self._set_btn_style(self.btn_stt, True)
-        self.spinner_timer.start(250)
-
-        self.transcription_thread = TranscriptionWorker(
-            stt_queue=self.stt_queue,
-            subtitle_callback=lambda text: self.signals.stt_result.emit(text),
-            error_callback=lambda err: self.signals.stt_error.emit(err)
-        )
-        self.transcription_thread.start()
-
-    def _stop_stt(self):
-        self.is_running_stt = False
-        self.btn_stt.setText("▶ Subtítulos")
-        self._set_btn_style(self.btn_stt, False)
-        
-        if self.transcription_thread:
-            self.transcription_thread.stop()
-            self.transcription_thread = None
-
-        self._check_audio_capture_stop()
-
-    def _start_ai(self):
-        api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-        if not api_key:
-            self._show_error("No se encontró OPENROUTER_API_KEY en .env")
-            return
-
-        self._ensure_audio_capture()
-        self.is_running_ai = True
-        self.btn_ai.setText("■ Stop Gemini")
-        self._set_btn_style(self.btn_ai, True)
-        self.spinner_timer.start(250)
-
-        self.gemini_worker = GeminiWorker(
-            audio_queue=self.audio_queue,
-            image_queue=self.image_queue,
-            api_key=os.environ.get("OPENROUTER_API_KEY", ""),
-            result_callback=lambda text: self.signals.gemini_result.emit(text),
-            error_callback=lambda err: self.signals.gemini_error.emit(err),
-            context_content=self.context_content,
-            model_name=self.model_combo.currentData(),
-            get_code_state_callback=self._get_code_state_safe,
-            chunk_callback=None
-        )
-        self.gemini_worker.start()
-
-    def _stop_ai(self):
-        self.is_running_ai = False
-        self.btn_ai.setText("▶ Gemini AI")
-        self._set_btn_style(self.btn_ai, False)
-
-        if self.gemini_thread:
-            self.gemini_thread.stop()
-            self.gemini_thread = None
-            
-        self._check_audio_capture_stop()
-
-    def _ensure_audio_capture(self):
-        if self.audio_thread is not None and self.audio_thread.is_alive():
-            return
-            
+    def _get_device_idx(self):
         idx_str = self.device_combo.currentText()
         device_idx = None
         if idx_str.startswith("["):
@@ -547,49 +336,38 @@ class CopilotApp(QMainWindow):
                 device_idx = int(idx_str.split("]")[0][1:])
             except ValueError:
                 pass
+        return device_idx
 
-        self.audio_thread = AudioCapture(
-            ai_queue=self.audio_queue,
-            stt_queue=self.stt_queue,
-            device_index=device_idx,
-            status_callback=lambda msg: self.signals.status_update.emit(msg, "running"),
-            error_callback=lambda err: self.signals.gemini_error.emit(err)
-        )
-        self.audio_thread.start()
+    def _toggle_stt(self):
+        if self.controller.is_running_stt:
+            self.controller.stop_stt()
+            self.btn_stt.setText("▶ Subtítulos")
+            self._set_btn_style(self.btn_stt, False)
+        else:
+            self.controller.start_stt(self._get_device_idx())
+            self.btn_stt.setText("■ Stop Subtítulos")
+            self._set_btn_style(self.btn_stt, True)
+            self.spinner_timer.start(250)
 
-    def _check_audio_capture_stop(self):
-        if not self.is_running_ai and not self.is_running_stt:
-            self.spinner_timer.stop()
-            self.title_bar.spinner_label.setText("")
-            self._set_status("Listo", "idle")
-            if self.audio_thread:
-                self.audio_thread.stop()
-                self.audio_thread = None
+    def _toggle_ai(self):
+        if self.controller.is_running_ai:
+            self.controller.stop_ai()
+            self.btn_ai.setText("▶ Gemini AI")
+            self._set_btn_style(self.btn_ai, False)
+        else:
+            api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+            self.controller.start_ai(api_key, self.model_combo.currentData(), self._get_device_idx())
+            if self.controller.is_running_ai:
+                self.btn_ai.setText("■ Stop Gemini")
+                self._set_btn_style(self.btn_ai, True)
+                self.spinner_timer.start(250)
 
     def _capture_screen(self):
-        if not self.is_running_ai:
-            self._set_status("Enciende Gemini AI primero", "error")
-            return
-            
-        try:
-            from PIL import ImageGrab
-            self.hide()
-            QApplication.processEvents()
-            time.sleep(0.1)
-            
-            img = ImageGrab.grab(all_screens=True)
-            self.show()
-            
-            if self.image_queue.full():
-                try:
-                    self.image_queue.get_nowait()
-                except queue.Empty:
-                    pass
-            self.image_queue.put(img)
-            self._set_status("Captura enviada a Gemini", "running")
-        except Exception as e:
-            self.show()
-            self._show_error(f"Error al capturar: {e}")
+        self.hide()
+        QApplication.processEvents()
+        time.sleep(0.1)
+        success = self.controller.capture_screen()
+        self.show()
 
     def _display_response(self, text: str):
         self._set_status("Respuesta generada", "idle")
@@ -597,12 +375,10 @@ class CopilotApp(QMainWindow):
         import re
         html_body = text.replace('\n', '<br>')
         
-        # Extraer [ESPAÑOL] como pregunta/contexto
         pregunta_match = re.search(r'\[ESPAÑOL\]:(.*?)(?=\[INGLÉS\]|$)', html_body, flags=re.IGNORECASE | re.DOTALL)
         pregunta_texto = pregunta_match.group(1).strip() if pregunta_match else "(Contexto deducido)"
         html_body = re.sub(r'\[ESPAÑOL\]:.*?(?=\[INGLÉS\]|$)', '', html_body, flags=re.IGNORECASE | re.DOTALL)
         
-        # Extraer [INGLÉS] como respuesta sugerida
         html_body = re.sub(r'\[INGLÉS\]:', '', html_body, flags=re.IGNORECASE)
 
         formatted = f"""
@@ -639,8 +415,8 @@ class CopilotApp(QMainWindow):
             <i>Atajo Global: Presiona <b>Ctrl+Shift+H</b> para ocultar/mostrar.</i>
         </div>
         """
-        if "WARNING" in self.context_content:
-            msg += f"<div style='color: {COLORS['accent_red']};'><br>{self.context_content}</div>"
+        if "WARNING" in self.controller.context_content:
+            msg += f"<div style='color: {COLORS['accent_red']};'><br>{self.controller.context_content}</div>"
         
         self.text_area.setHtml(msg)
 
@@ -651,14 +427,10 @@ class CopilotApp(QMainWindow):
             self.show()
 
     def closeEvent(self, event):
-        if self.is_running_ai:
-            self._stop_ai()
-        if self.is_running_stt:
-            self._stop_stt()
+        self.controller.stop_all()
         event.accept()
 
 def run_app():
-    # Permite que la aplicación PySide6 se cierre correctamente si presionas Ctrl+C en la terminal
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     
     app = QApplication.instance()

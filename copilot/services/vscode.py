@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from copilot.logger import get_logger
+from copilot.core.logger import get_logger
 
 logger = get_logger(__name__)
 

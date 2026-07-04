@@ -1,7 +1,7 @@
 
 import os
 from pathlib import Path
-from copilot.logger import get_logger
+from copilot.core.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -45,12 +45,8 @@ CONTEXT_DIR = Path.cwd() / "context"
 def load_context() -> str:
     CONTEXT_DIR.mkdir(exist_ok=True)
     
-    legacy_resume = Path.cwd() / "hoja_de_vida.md"
     content_blocks = []
     
-    if legacy_resume.exists():
-        content_blocks.append(f"<resume>\n{legacy_resume.read_text(encoding='utf-8')}\n</resume>")
-        
     for md_file in CONTEXT_DIR.glob("*.md"):
         try:
             text = md_file.read_text(encoding="utf-8")
@@ -62,7 +58,7 @@ def load_context() -> str:
     if not content_blocks:
         warning = (
             "[WARNING: No se encontró contexto. Crea archivos .md en la carpeta 'context/' "
-            "o coloca hoja_de_vida.md en la raíz para personalizar las respuestas.]"
+            "para personalizar las respuestas de la IA.]"
         )
         logger.warning(warning)
         return warning

@@ -1,5 +1,23 @@
-.env
-.mypy_cache/
+# Entorno virtual y Python
+.venv/
+venv/
+env/
 __pycache__/
+*.pyc
+.mypy_cache/
+
+# Variables de Entorno y Claves
+.env
+
+# Base de datos y logs
+interviews.db
 copilot.log
-hoja_de_vida.md
+*.log
+
+# Contexto y archivos personales
+context/*.md
+!context/.gitkeep
+
+# IDEs
+.vscode/
+.idea/
