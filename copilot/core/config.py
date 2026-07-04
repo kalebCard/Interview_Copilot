@@ -5,10 +5,20 @@ from copilot.core.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Derive project root from this file's location: core/config.py -> core -> copilot -> project_root
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+_dotenv_loaded = False
+
 def _load_dotenv() -> None:
+    global _dotenv_loaded
+    if _dotenv_loaded:
+        return
+    _dotenv_loaded = True
+
     candidates = [
         Path.cwd() / ".env",
-        Path(__file__).parent.parent / ".env",
+        PROJECT_ROOT / ".env",
     ]
     for env_path in candidates:
         if env_path.exists():
@@ -40,7 +50,7 @@ VAD_MAX_DURATION = 10.0
 VAD_MAX_DURATION_STT = 2.5
 SILENCE_THRESHOLD = 500
 SAMPLE_RATE = 16000
-CONTEXT_DIR = Path.cwd() / "context"
+CONTEXT_DIR = PROJECT_ROOT / "context"
 
 def load_context() -> str:
     CONTEXT_DIR.mkdir(exist_ok=True)

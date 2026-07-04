@@ -1,14 +1,14 @@
 
 import os
-from pathlib import Path
 
-from copilot.core.config import load_context, CONTEXT_DIR
+from copilot.core.config import load_context, CONTEXT_DIR, _load_dotenv
 
 def run_check() -> None:
     print("\n===========================================")
     print("  Interview Copilot -- Startup Check")
     print("===========================================\n")
 
+    _load_dotenv()  # Ensure .env is loaded before checking API key
     all_ok = True
 
     context_str = load_context()

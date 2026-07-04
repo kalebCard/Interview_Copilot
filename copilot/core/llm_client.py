@@ -1,17 +1,17 @@
 import os
 import time
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 try:
     from openai import OpenAI
 except ImportError:
-    OpenAI = None
+    OpenAI = None  # type: ignore
 
 from copilot.core.logger import get_logger
 
 logger = get_logger(__name__)
 
 class LLMClient:
-    def __init__(self, api_key: str = None, base_url: str = "https://openrouter.ai/api/v1"):
+    def __init__(self, api_key: Optional[str] = None, base_url: str = "https://openrouter.ai/api/v1"):
         if OpenAI is None:
             raise ImportError("openai no instalado. Ejecuta: pip install openai")
         
@@ -27,7 +27,7 @@ class LLMClient:
             try:
                 resp = self.client.chat.completions.create(
                     model=model,
-                    messages=messages,
+                    messages=messages,  # type: ignore
                     stream=stream
                 )
                 return resp

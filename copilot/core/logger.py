@@ -19,7 +19,9 @@ def get_logger(name: str) -> logging.Logger:
         console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(fmt)
         
-        log_file = Path.cwd() / "copilot.log"
+        # Derive project root: logger.py -> core -> copilot -> project_root
+        _project_root = Path(__file__).resolve().parent.parent.parent
+        log_file = _project_root / "copilot.log"
         file_handler = RotatingFileHandler(
             log_file, maxBytes=5*1024*1024, backupCount=3, encoding="utf-8"
         )

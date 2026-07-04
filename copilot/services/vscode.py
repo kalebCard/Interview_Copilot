@@ -1,10 +1,11 @@
 import json
 from pathlib import Path
 from copilot.core.logger import get_logger
+from copilot.core.config import PROJECT_ROOT
 
 logger = get_logger(__name__)
 
-VSCODE_STATE_FILE = Path.cwd() / ".vscode_state.json"
+VSCODE_STATE_FILE = PROJECT_ROOT / ".vscode_state.json"
 
 def read_vscode_state() -> str:
     if not VSCODE_STATE_FILE.exists():

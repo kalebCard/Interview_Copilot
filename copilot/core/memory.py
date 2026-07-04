@@ -2,10 +2,17 @@ import sqlite3
 from pathlib import Path
 import time
 from typing import List, Tuple
+from copilot.core.config import PROJECT_ROOT
 
-DB_PATH = Path.cwd() / "interviews.db"
+DB_PATH = PROJECT_ROOT / "interviews.db"
+
+_db_initialized = False
 
 def init_db():
+    global _db_initialized
+    if _db_initialized:
+        return
+    _db_initialized = True
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS interactions (
@@ -18,6 +25,8 @@ def init_db():
                 feedback TEXT
             )
         """)
+
+
 
 def add_interaction(session_id: str, question: str, answer: str, category: str = "general"):
     with sqlite3.connect(DB_PATH) as conn:
@@ -34,8 +43,8 @@ def get_recent_context(session_id: str, max_tokens: int = 2000) -> List[str]:
         )
         rows = cursor.fetchall()
         
-    context = []
-    current_tokens = 0
+    context: List[str] = []
+    current_tokens: float = 0.0
     for q, a in rows:
         turn = f"Question: {q}\nAnswer: {a}"
         est_tokens = len(turn.split()) * 1.3

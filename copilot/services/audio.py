@@ -20,8 +20,16 @@ from copilot.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-def pcm_to_wav(raw_pcm: bytes, sample_rate: int, channels: int) -> bytes:
-    if channels > 2:
+def pcm_to_wav(raw_pcm: bytes, sample_rate: int, channels: int, force_mono: bool = False) -> bytes:
+    if channels > 1 and force_mono:
+        try:
+            pcm_array = array.array('h', raw_pcm)
+            mono_array = pcm_array[::channels]
+            raw_pcm = mono_array.tobytes()
+            channels = 1
+        except Exception as e:
+            logger.error(f"Error downmixing audio to mono: {e}")
+    elif channels > 2:
         try:
             pcm_array = array.array('h', raw_pcm)
             mono_array = pcm_array[::channels]
@@ -177,7 +185,7 @@ class AudioCapture(threading.Thread):
                             
                         if silence_blocks_count >= stt_silence_timeout_blocks and not stt_flushed:
                             if self.stt_queue and audio_buffer_stt:
-                                wav_stt = pcm_to_wav(b"".join(audio_buffer_stt), actual_rate, actual_channels)
+                                wav_stt = pcm_to_wav(b"".join(audio_buffer_stt), actual_rate, actual_channels, force_mono=True)
                                 try:
                                     self.stt_queue.put_nowait(wav_stt)
                                 except queue.Full:
@@ -202,19 +210,13 @@ class AudioCapture(threading.Thread):
                             stt_flushed = False
                             silence_blocks_count = 0
                     else:
-                        if not audio_buffer_ai or not speech_active:
-                            audio_buffer_ai = [raw_pcm]
-                        else:
-                            audio_buffer_ai.append(raw_pcm)
-                        
-                        if not audio_buffer_stt or not speech_active:
-                            audio_buffer_stt = [raw_pcm]
-                        else:
-                            audio_buffer_stt.append(raw_pcm)
+                        # Pre-roll: keep one block of silence as lead-in for next speech segment
+                        audio_buffer_ai = [raw_pcm]
+                        audio_buffer_stt = [raw_pcm]
                         
                 if len(audio_buffer_stt) >= max_blocks_stt and speech_active:
                     if self.stt_queue:
-                        wav_stt = pcm_to_wav(b"".join(audio_buffer_stt), actual_rate, actual_channels)
+                        wav_stt = pcm_to_wav(b"".join(audio_buffer_stt), actual_rate, actual_channels, force_mono=True)
                         try:
                             self.stt_queue.put_nowait(wav_stt)
                         except queue.Full:

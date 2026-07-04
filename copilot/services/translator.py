@@ -54,22 +54,25 @@ class TranscriptionWorker(threading.Thread):
         
         self.active_threads = 0
         self.thread_count_lock = threading.Lock()
+        self.recognizer = sr.Recognizer()
+        self.translator = GoogleTranslator(source='en', target='es') if GoogleTranslator else None
         
     def stop(self) -> None:
         self._stop_event.set()
 
     def _process_audio_task(self, wav_bytes: bytes) -> None:
         try:
-
-            recognizer = sr.Recognizer()
-            translator = GoogleTranslator(source='en', target='es')
+            if not self.translator:
+                if self.error_callback:
+                    self.error_callback("deep-translator no instalado. Ejecuta: pip install deep-translator")
+                return
             
             audio_file = io.BytesIO(wav_bytes)
             with sr.AudioFile(audio_file) as source:
-                audio_data = recognizer.record(source)
+                audio_data = self.recognizer.record(source)
 
             try:
-                english_text = recognizer.recognize_google(audio_data, language="en-US")
+                english_text = self.recognizer.recognize_google(audio_data, language="en-US")
             except sr.UnknownValueError:
                 return
             except sr.RequestError as e:
@@ -82,7 +85,7 @@ class TranscriptionWorker(threading.Thread):
                 return
 
             try:
-                spanish_text = translator.translate(english_text)
+                spanish_text = self.translator.translate(english_text)
                 spanish_text = normalize_text(spanish_text)
                 
                 if is_valid_text(spanish_text):

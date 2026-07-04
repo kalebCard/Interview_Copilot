@@ -25,9 +25,9 @@ class AppController:
         self.stt_error_cb = stt_error_cb
         self.status_update_cb = status_update_cb
 
-        self.audio_queue = queue.Queue(maxsize=2)
-        self.stt_queue = queue.Queue(maxsize=10)
-        self.image_queue = queue.Queue(maxsize=1)
+        self.audio_queue: queue.Queue[bytes] = queue.Queue(maxsize=2)
+        self.stt_queue: queue.Queue[bytes] = queue.Queue(maxsize=10)
+        self.image_queue: queue.Queue[object] = queue.Queue(maxsize=1)
 
         self.audio_thread: Optional[AudioCapture] = None
         self.gemini_thread: Optional[GeminiWorker] = None
@@ -70,6 +70,7 @@ class AppController:
             self.status_update_cb("Listo", "idle")
             if self.audio_thread:
                 self.audio_thread.stop()
+                self.audio_thread.join(timeout=2)
                 self.audio_thread = None
 
     def start_stt(self, device_idx: Optional[int]):
@@ -87,6 +88,7 @@ class AppController:
         self.is_running_stt = False
         if self.transcription_thread:
             self.transcription_thread.stop()
+            self.transcription_thread.join(timeout=2)
             self.transcription_thread = None
         self.check_audio_capture_stop()
 
@@ -115,6 +117,7 @@ class AppController:
         self.is_running_ai = False
         if self.gemini_thread:
             self.gemini_thread.stop()
+            self.gemini_thread.join(timeout=2)
             self.gemini_thread = None
         self.check_audio_capture_stop()
 

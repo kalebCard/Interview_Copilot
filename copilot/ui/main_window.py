@@ -1,12 +1,10 @@
 import sys
 import os
 import signal
-import time
 import queue
 import re
 import ctypes
 import keyboard
-import threading
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -365,14 +363,24 @@ class CopilotApp(QMainWindow):
     def _capture_screen(self):
         self.hide()
         QApplication.processEvents()
-        time.sleep(0.1)
-        success = self.controller.capture_screen()
+        QTimer.singleShot(100, self._do_capture_and_show)
+
+    def _do_capture_and_show(self):
+        self.controller.capture_screen()
         self.show()
 
     def _display_response(self, text: str):
         self._set_status("Respuesta generada", "idle")
         
-        import re
+        # Extract code blocks [CÓDIGO]...[/CÓDIGO] before HTML conversion
+        code_match = re.search(r'\[CÓDIGO\](.*?)\[/CÓDIGO\]', text, flags=re.DOTALL)
+        if code_match:
+            code_content = code_match.group(1).strip()
+            self.code_area.setPlainText(code_content)
+            self.controller.set_code_state_safe(code_content)
+            # Remove the code block from the display text
+            text = re.sub(r'\[CÓDIGO\].*?\[/CÓDIGO\]', '', text, flags=re.DOTALL).strip()
+        
         html_body = text.replace('\n', '<br>')
         
         pregunta_match = re.search(r'\[ESPAÑOL\]:(.*?)(?=\[INGLÉS\]|$)', html_body, flags=re.IGNORECASE | re.DOTALL)

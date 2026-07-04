@@ -3,7 +3,8 @@ import threading
 import queue
 import base64
 import io
-from typing import Callable
+import concurrent.futures
+from typing import Callable, Optional, Any
 from copilot.core.logger import get_logger
 from copilot.core.memory import add_interaction, get_recent_context
 from copilot.core.prompts import CLASSIFIER_PROMPT, PROMPTS
@@ -11,6 +12,8 @@ from copilot.core.config import build_system_prompt
 from copilot.core.llm_client import LLMClient
 
 logger = get_logger(__name__)
+
+
 
 class GeminiWorker(threading.Thread):
     def __init__(
@@ -22,20 +25,20 @@ class GeminiWorker(threading.Thread):
         error_callback: Callable[[str], None],
         context_content: str,
         model_name: str,
-        get_code_state_callback: Callable[[], str] = None,
-        chunk_callback: Callable[[str], None] = None,
+        get_code_state_callback: Optional[Callable[[], str]] = None,
+        chunk_callback: Optional[Callable[[str], None]] = None,
     ):
         super().__init__(daemon=True, name="GeminiWorkerThread")
-        self.audio_queue     = audio_queue
-        self.image_queue     = image_queue
-        self.api_key         = api_key
+        self.audio_queue = audio_queue
+        self.image_queue = image_queue
+        self.api_key = api_key
         self.result_callback = result_callback
-        self.error_callback  = error_callback
+        self.error_callback = error_callback
         self.context_content = context_content
-        self.model_name      = model_name
+        self.model_name = model_name
         self.get_code_state_callback = get_code_state_callback
-        self.chunk_callback  = chunk_callback
-        self._stop_event     = threading.Event()
+        self.chunk_callback = chunk_callback
+        self._stop_event = threading.Event()
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -91,14 +94,7 @@ class GeminiWorker(threading.Thread):
                     if code_state and code_state.strip():
                         text_prompt += f"\n\nCURRENT WORKSPACE CODE STATE:\n[CÓDIGO]\n{code_state}\n[/CÓDIGO]\n"
 
-                # Local heuristic to save API calls in Auto Mode
-                if not img_bytes and len(text_prompt.split()) < 4:
-                    logger.info("Chunk ignorado por ser demasiado corto (Ruido o monosílabo).")
-                    continue
-                
-                response_text = ""
-
-                user_content = [
+                user_content: list[dict[str, Any]] = [
                     {"type": "text", "text": text_prompt}
                 ]
                 
@@ -118,21 +114,29 @@ class GeminiWorker(threading.Thread):
                         "image_url": {"url": f"data:image/jpeg;base64,{base64_img}"}
                     })
                     
-                # 1. Classification Pre-flight
-                try:
-                    class_resp = llm_client.generate_chat(
-                        model="google/gemini-2.5-flash",
-                        messages=[
-                            {"role": "system", "content": CLASSIFIER_PROMPT},
-                            {"role": "user", "content": text_prompt}
-                        ]
-                    )
-                    category = class_resp.choices[0].message.content.strip()
-                    # Clean up category in case of weird whitespace or symbols
-                    category = "".join(c for c in category if c.isalnum() or c.isspace()).strip()
-                except Exception as e:
-                    logger.warning(f"Classification failed: {e}")
-                    category = "General"
+                # 1. Classification Pre-flight (send multimodal content for accurate classification)
+                def _classify():
+                    try:
+                        class_resp = llm_client.generate_chat(
+                            model="google/gemini-2.5-flash",
+                            messages=[
+                                {"role": "system", "content": CLASSIFIER_PROMPT},
+                                {"role": "user", "content": user_content}
+                            ]
+                        )
+                        cat = class_resp.choices[0].message.content.strip()
+                        cat = "".join(c for c in cat if c.isalnum() or c.isspace()).strip()
+                        return cat
+                    except Exception as e:
+                        logger.warning(f"Classification failed: {e}")
+                        return "General"
+
+                # Launch classification in a thread to reduce serial latency
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    classify_future = executor.submit(_classify)
+                
+                    # While classification runs, prepare other data
+                    category = classify_future.result(timeout=10)
                     
                 category_prompt = PROMPTS.get(category, PROMPTS["General"])
                 dynamic_system_prompt = build_system_prompt(self.context_content, category_prompt)
@@ -167,7 +171,7 @@ class GeminiWorker(threading.Thread):
                         logger.info("Chunk ignorado por no contener pregunta.")
                     else:
                         self.result_callback(response_text)
-                        add_interaction("default_session", text_prompt, response_text, "general")
+                        add_interaction("default_session", text_prompt, response_text, category)
                 else:
                     logger.info("Gemini devolvió una respuesta vacía para este chunk.")
 
