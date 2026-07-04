@@ -38,7 +38,7 @@ def add_interaction(session_id: str, question: str, answer: str, category: str =
 def get_recent_context(session_id: str, max_tokens: int = 2000) -> List[str]:
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.execute(
-            "SELECT question, answer FROM interactions WHERE session_id = ? ORDER BY timestamp DESC",
+            "SELECT question, answer FROM interactions WHERE session_id = ? ORDER BY timestamp ASC",
             (session_id,)
         )
         rows = cursor.fetchall()
@@ -48,10 +48,11 @@ def get_recent_context(session_id: str, max_tokens: int = 2000) -> List[str]:
     for q, a in rows:
         turn = f"Question: {q}\nAnswer: {a}"
         est_tokens = len(turn.split()) * 1.3
-        if current_tokens + est_tokens > max_tokens:
-            break
-        context.insert(0, turn)
+        context.append(turn)
         current_tokens += est_tokens
+        while current_tokens > max_tokens and context:
+            removed_turn = context.pop(0)
+            current_tokens -= len(removed_turn.split()) * 1.3
         
     return context
 

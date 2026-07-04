@@ -2,6 +2,7 @@
 import threading
 import queue
 import io
+import time
 import re
 import speech_recognition as sr
 from copilot.core.logger import get_logger
@@ -109,7 +110,7 @@ class TranscriptionWorker(threading.Thread):
                 current_active = self.active_threads
                 
             if current_active >= MAX_CONCURRENT_PROCESSING:
-                self._stop_event.wait(0.05)
+                time.sleep(0.05)
                 continue
 
             try:

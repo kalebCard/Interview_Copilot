@@ -180,9 +180,6 @@ class AudioCapture(threading.Thread):
                     if speech_active:
                         silence_blocks_count += 1
                         audio_buffer_ai.append(raw_pcm)
-                        if not stt_flushed:
-                            audio_buffer_stt.append(raw_pcm)
-                            
                         if silence_blocks_count >= stt_silence_timeout_blocks and not stt_flushed:
                             if self.stt_queue and audio_buffer_stt:
                                 wav_stt = pcm_to_wav(b"".join(audio_buffer_stt), actual_rate, actual_channels, force_mono=True)
@@ -192,6 +189,9 @@ class AudioCapture(threading.Thread):
                                     logger.warning("Cola de STT llena, descartando frame de audio.")
                             audio_buffer_stt = []
                             stt_flushed = True
+                            
+                        if not stt_flushed:
+                            audio_buffer_stt.append(raw_pcm)
                         
                         if silence_blocks_count >= silence_timeout_blocks:
 
@@ -214,7 +214,7 @@ class AudioCapture(threading.Thread):
                         audio_buffer_ai = [raw_pcm]
                         audio_buffer_stt = [raw_pcm]
                         
-                if len(audio_buffer_stt) >= max_blocks_stt and speech_active:
+                if len(audio_buffer_stt) >= max_blocks_stt and speech_active and not stt_flushed:
                     if self.stt_queue:
                         wav_stt = pcm_to_wav(b"".join(audio_buffer_stt), actual_rate, actual_channels, force_mono=True)
                         try:
@@ -222,6 +222,7 @@ class AudioCapture(threading.Thread):
                         except queue.Full:
                             logger.warning("Cola de STT llena, descartando frame de audio.")
                     audio_buffer_stt = []
+                    stt_flushed = True
 
                 if len(audio_buffer_ai) >= max_blocks_ai and speech_active:
                     if self.ai_queue:

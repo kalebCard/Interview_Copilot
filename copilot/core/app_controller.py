@@ -68,10 +68,11 @@ class AppController:
     def check_audio_capture_stop(self):
         if not self.is_running_ai and not self.is_running_stt:
             self.status_update_cb("Listo", "idle")
-            if self.audio_thread:
-                self.audio_thread.stop()
-                self.audio_thread.join(timeout=2)
-                self.audio_thread = None
+            with self.code_state_lock:
+                if self.audio_thread:
+                    self.audio_thread.stop()
+                    self.audio_thread.join(timeout=2)
+                    self.audio_thread = None
 
     def start_stt(self, device_idx: Optional[int]):
         self.ensure_audio_capture(device_idx)

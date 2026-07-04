@@ -118,7 +118,7 @@ class GeminiWorker(threading.Thread):
                 def _classify():
                     try:
                         class_resp = llm_client.generate_chat(
-                            model="google/gemini-2.5-flash",
+                            model=self.model_name,
                             messages=[
                                 {"role": "system", "content": CLASSIFIER_PROMPT},
                                 {"role": "user", "content": user_content}
@@ -132,11 +132,14 @@ class GeminiWorker(threading.Thread):
                         return "General"
 
                 # Launch classification in a thread to reduce serial latency
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                try:
                     classify_future = executor.submit(_classify)
                 
                     # While classification runs, prepare other data
-                    category = classify_future.result(timeout=10)
+                    category = classify_future.result(timeout=15)
+                finally:
+                    executor.shutdown(wait=True)
                     
                 category_prompt = PROMPTS.get(category, PROMPTS["General"])
                 dynamic_system_prompt = build_system_prompt(self.context_content, category_prompt)
