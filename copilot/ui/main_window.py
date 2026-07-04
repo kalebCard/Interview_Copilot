@@ -118,17 +118,6 @@ class CopilotApp(QMainWindow):
         config_layout = QVBoxLayout(config_panel)
         config_layout.setContentsMargins(16, 12, 16, 12)
         
-        dev_layout = QHBoxLayout()
-        lbl_dev = QLabel("Device")
-        lbl_dev.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 9pt;")
-        dev_layout.addWidget(lbl_dev)
-        
-        self.device_combo = QComboBox()
-        self.device_combo.addItem("Auto (WASAPI Loopback)")
-        self._populate_devices()
-        dev_layout.addWidget(self.device_combo, 1)
-        config_layout.addLayout(dev_layout)
-        
         model_layout = QHBoxLayout()
         lbl_model = QLabel("Modelo IA")
         lbl_model.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 9pt;")
@@ -247,17 +236,6 @@ class CopilotApp(QMainWindow):
             }}
         """)
 
-    def _populate_devices(self):
-        try:
-            import pyaudiowpatch as pyaudio
-            pa = pyaudio.PyAudio()
-            for i in range(pa.get_device_count()):
-                dev = pa.get_device_info_by_index(i)
-                if dev.get("maxInputChannels", 0) > 0:
-                    self.device_combo.addItem(f"[{i}] {dev.get('name')}")
-            pa.terminate()
-        except Exception:
-            pass
 
     def _set_status(self, msg: str, state: str = "idle"):
         self.lbl_status_text.setText(msg)
@@ -326,15 +304,6 @@ class CopilotApp(QMainWindow):
         self.lbl_subtitle.setText("")
         self.lbl_subtitle.hide()
 
-    def _get_device_idx(self):
-        idx_str = self.device_combo.currentText()
-        device_idx = None
-        if idx_str.startswith("["):
-            try:
-                device_idx = int(idx_str.split("]")[0][1:])
-            except ValueError:
-                pass
-        return device_idx
 
     def _toggle_stt(self):
         if self.controller.is_running_stt:
@@ -342,7 +311,7 @@ class CopilotApp(QMainWindow):
             self.btn_stt.setText("▶ Subtítulos")
             self._set_btn_style(self.btn_stt, False)
         else:
-            self.controller.start_stt(self._get_device_idx())
+            self.controller.start_stt(None)
             self.btn_stt.setText("■ Stop Subtítulos")
             self._set_btn_style(self.btn_stt, True)
             self.spinner_timer.start(250)
@@ -354,7 +323,7 @@ class CopilotApp(QMainWindow):
             self._set_btn_style(self.btn_ai, False)
         else:
             api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-            self.controller.start_ai(api_key, self.model_combo.currentData(), self._get_device_idx())
+            self.controller.start_ai(api_key, self.model_combo.currentData(), None)
             if self.controller.is_running_ai:
                 self.btn_ai.setText("■ Stop Gemini")
                 self._set_btn_style(self.btn_ai, True)
