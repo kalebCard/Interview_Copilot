@@ -5,6 +5,9 @@ import base64
 import io
 from typing import Callable
 from copilot.logger import get_logger
+from copilot.memory import add_interaction, get_recent_context
+from copilot.prompts import CLASSIFIER_PROMPT, PROMPTS
+from copilot.config import build_system_prompt
 
 logger = get_logger(__name__)
 
@@ -16,9 +19,10 @@ class GeminiWorker(threading.Thread):
         api_key: str,
         result_callback: Callable[[str], None],
         error_callback: Callable[[str], None],
-        system_prompt: str,
+        context_content: str,
         model_name: str,
         get_code_state_callback: Callable[[], str] = None,
+        chunk_callback: Callable[[str], None] = None,
     ):
         super().__init__(daemon=True, name="GeminiWorkerThread")
         self.audio_queue     = audio_queue
@@ -26,10 +30,10 @@ class GeminiWorker(threading.Thread):
         self.api_key         = api_key
         self.result_callback = result_callback
         self.error_callback  = error_callback
-        self.system_prompt   = system_prompt
+        self.context_content = context_content
         self.model_name      = model_name
         self.get_code_state_callback = get_code_state_callback
-        self.memory_buffer   = []
+        self.chunk_callback  = chunk_callback
         self._stop_event     = threading.Event()
 
     def stop(self) -> None:
@@ -80,16 +84,23 @@ class GeminiWorker(threading.Thread):
                     "according to your instructions."
                 )
 
-                if self.memory_buffer:
-                    memory_text = "\n\nPAST CONVERSATION CONTEXT (last few turns):\n"
-                    for i, turn in enumerate(self.memory_buffer):
-                        memory_text += f"Turn {i+1}: {turn}\n"
+                recent_context = get_recent_context("default_session", max_tokens=2000)
+                if recent_context:
+                    memory_text = "\n\nPAST CONVERSATION CONTEXT:\n"
+                    for i, turn in enumerate(recent_context):
+                        memory_text += f"Turn {i+1}:\n{turn}\n"
                     text_prompt += memory_text
 
                 if self.get_code_state_callback:
-                    current_code = self.get_code_state_callback()
-                    if current_code:
-                        text_prompt += f"\n\nCURRENT WORKSPACE CODE STATE:\n```\n{current_code}\n```"                
+                    code_state = self.get_code_state_callback()
+                    if code_state and code_state.strip():
+                        text_prompt += f"\n\nCURRENT WORKSPACE CODE STATE:\n[CÓDIGO]\n{code_state}\n[/CÓDIGO]\n"
+
+                # Local heuristic to save API calls in Auto Mode
+                if not img_bytes and len(text_prompt.split()) < 4:
+                    logger.info("Chunk ignorado por ser demasiado corto (Ruido o monosílabo).")
+                    continue
+                
                 response_text = ""
 
                 user_content = [
@@ -112,34 +123,56 @@ class GeminiWorker(threading.Thread):
                         "image_url": {"url": f"data:image/jpeg;base64,{base64_img}"}
                     })
                     
+                # 1. Classification Pre-flight
+                try:
+                    class_resp = client_or.chat.completions.create(
+                        model="google/gemini-2.5-flash",
+                        messages=[
+                            {"role": "system", "content": CLASSIFIER_PROMPT},
+                            {"role": "user", "content": text_prompt}
+                        ]
+                    )
+                    category = class_resp.choices[0].message.content.strip()
+                    # Clean up category in case of weird whitespace or symbols
+                    category = "".join(c for c in category if c.isalnum() or c.isspace()).strip()
+                except Exception as e:
+                    logger.warning(f"Classification failed: {e}")
+                    category = "General"
+                    
+                category_prompt = PROMPTS.get(category, PROMPTS["General"])
+                dynamic_system_prompt = build_system_prompt(self.context_content, category_prompt)
+                
+                # 2. Main Generation
                 resp = client_or.chat.completions.create(
                     model=self.model_name,
                     messages=[
                         {
                             "role": "system",
-                            "content": self.system_prompt
+                            "content": dynamic_system_prompt
                         },
                         {
                             "role": "user",
                             "content": user_content
                         }
-                    ]
+                    ],
+                    stream=True
                 )
-                response_text = resp.choices[0].message.content or ""
-
+                
+                response_text = ""
+                for chunk in resp:
+                    if chunk.choices and len(chunk.choices) > 0:
+                        delta = chunk.choices[0].delta.content
+                        if delta:
+                            response_text += delta
+                            if self.chunk_callback:
+                                self.chunk_callback(delta)
+                
                 if response_text and response_text.strip():
                     if "IGNORE_CHUNK" in response_text:
                         logger.info("Chunk ignorado por no contener pregunta.")
                     else:
                         self.result_callback(response_text)
-                        
-                        # Guardar en la memoria a corto plazo si hubo respuesta válida
-                        self.memory_buffer.append(response_text)
-                        
-                        estimated_tokens = sum(len(text.split()) * 1.3 for text in self.memory_buffer)
-                        while estimated_tokens > 2000 and len(self.memory_buffer) > 1:
-                            self.memory_buffer.pop(0)
-                            estimated_tokens = sum(len(text.split()) * 1.3 for text in self.memory_buffer)
+                        add_interaction("default_session", text_prompt, response_text, "general")
                 else:
                     logger.info("Gemini devolvió una respuesta vacía para este chunk.")
 

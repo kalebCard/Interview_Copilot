@@ -40,41 +40,49 @@ VAD_MAX_DURATION = 10.0
 VAD_MAX_DURATION_STT = 2.5
 SILENCE_THRESHOLD = 500
 SAMPLE_RATE = 16000
-RESUME_FILENAME = "hoja_de_vida.md"
+CONTEXT_DIR = Path.cwd() / "context"
 
-def load_resume() -> str:
-    candidates = [
-        Path.cwd() / RESUME_FILENAME,
-        Path(__file__).parent.parent / RESUME_FILENAME,
-    ]
-    for path in candidates:
-        if path.exists():
-            try:
-                content = path.read_text(encoding="utf-8")
-                logger.info(f"Resume cargado desde: {path}")
-                return content
-            except Exception as e:
-                logger.warning(f"No se pudo cargar {RESUME_FILENAME}: {e}")
+def load_context() -> str:
+    CONTEXT_DIR.mkdir(exist_ok=True)
+    
+    legacy_resume = Path.cwd() / "hoja_de_vida.md"
+    content_blocks = []
+    
+    if legacy_resume.exists():
+        content_blocks.append(f"<resume>\n{legacy_resume.read_text(encoding='utf-8')}\n</resume>")
+        
+    for md_file in CONTEXT_DIR.glob("*.md"):
+        try:
+            text = md_file.read_text(encoding="utf-8")
+            tag_name = md_file.stem.lower().replace(" ", "_")
+            content_blocks.append(f"<{tag_name}>\n{text}\n</{tag_name}>")
+        except Exception as e:
+            logger.warning(f"No se pudo cargar {md_file.name}: {e}")
+            
+    if not content_blocks:
+        warning = (
+            "[WARNING: No se encontró contexto. Crea archivos .md en la carpeta 'context/' "
+            "o coloca hoja_de_vida.md en la raíz para personalizar las respuestas.]"
+        )
+        logger.warning(warning)
+        return warning
+        
+    return "\n\n".join(content_blocks)
 
-    warning = (
-        f"[WARNING: {RESUME_FILENAME} no encontrado. "
-        "Las respuestas no estarán personalizadas. "
-        "Coloca hoja_de_vida.md en la misma carpeta y reinicia.]"
-    )
-    logger.warning(warning)
-    return warning
-
-def build_system_prompt(resume_content: str) -> str:
+def build_system_prompt(context_content: str, category_prompt: str = "") -> str:
     return f"""You are an expert real-time interview assistant for the following candidate. \
 Your purpose is to help this candidate answer ALL types of interview questions \
 (technical, behavioral, HR, personal, and cultural fit) naturally and confidently, \
 based on their actual experience.
 
 ======================================================
- CANDIDATE PROFILE  (source: hoja_de_vida.md)
+ CANDIDATE CONTEXT 
 ======================================================
-{resume_content}
+{context_content}
 ======================================================
+
+SPECIALIZED INSTRUCTIONS:
+{category_prompt}
 
 INSTRUCTIONS — follow these EXACTLY:
 

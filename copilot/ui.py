@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer, QObject, Signal
 
 from copilot.config import (
-    load_resume,
+    load_context,
     build_system_prompt,
 )
 from copilot.audio import AudioCapture
@@ -169,8 +169,7 @@ class CopilotApp(QMainWindow):
         self.spinner_timer = QTimer(self)
         self.spinner_timer.timeout.connect(self._tick_spinner)
 
-        self.resume_content = load_resume()
-        self.system_prompt = build_system_prompt(self.resume_content)
+        self.context_content = load_context()
 
         self.signals = WorkerSignals()
         self.signals.gemini_result.connect(self._display_response)
@@ -198,8 +197,13 @@ class CopilotApp(QMainWindow):
         self._configure_window()
         self._build_ui()
 
-    def _get_code_state_safe(self):
+    def _get_code_state_safe(self) -> str:
+        from copilot.vscode import read_vscode_state
+        vscode_state = read_vscode_state()
+        
         with self.code_state_lock:
+            if vscode_state:
+                return vscode_state
             return self.current_code_state
 
     def _set_code_state_safe(self, code):
@@ -306,21 +310,17 @@ class CopilotApp(QMainWindow):
         self._set_btn_style(self.btn_ai, False)
         ctrl_layout.addWidget(self.btn_ai, 1)
         
-        self.btn_capture = QPushButton("📷")
-        self.btn_capture.setCursor(Qt.PointingHandCursor)
-        self.btn_capture.clicked.connect(self._capture_screen)
-        self.btn_capture.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {COLORS['surface2']};
-                color: {COLORS['text']};
-                border: none;
-                padding: 8px;
-                border-radius: 4px;
-                font-size: 12pt;
-            }}
-            QPushButton:hover {{ background-color: {COLORS['border']}; }}
-        """)
-        ctrl_layout.addWidget(self.btn_capture)
+        self.btn_camera = QPushButton("📷")
+        self.btn_camera.setFixedSize(45, 45)
+        self._set_btn_style(self.btn_camera, False)
+        self.btn_camera.clicked.connect(self._capture_screen)
+        ctrl_layout.addWidget(self.btn_camera)
+        
+        self.btn_coach = QPushButton("📈 Coach")
+        self.btn_coach.setFixedHeight(45)
+        self._set_btn_style(self.btn_coach, False)
+        self.btn_coach.clicked.connect(self._run_coach)
+        ctrl_layout.addWidget(self.btn_coach)
 
         main_layout.addLayout(ctrl_layout)
 
@@ -407,6 +407,26 @@ class CopilotApp(QMainWindow):
         else:
             self.lbl_status_dot.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 14pt;")
 
+    def _run_coach(self):
+        self._append_system_msg("Generando reporte de Coach. Por favor espera...")
+        def run():
+            from copilot.coach import generate_coach_report
+            report = generate_coach_report("default_session")
+            # Mostrar en hilo principal
+            QTimer.singleShot(0, lambda: self._display_coach_report(report))
+        threading.Thread(target=run, daemon=True).start()
+
+    def _display_coach_report(self, report: str):
+        formatted = f"""
+        <div style="margin-bottom: 20px; font-family: Segoe UI, sans-serif;">
+            <div style="color: {COLORS['accent_red']}; font-size: 14px; text-transform: uppercase; font-weight: bold; letter-spacing: 1px; margin-bottom: 10px;">📊 AI Coach Report</div>
+            <div style="color: #ffffff; font-size: 14px; line-height: 1.5; padding: 15px; background-color: rgba(255,100,100,0.1); border-radius: 8px; border: 1px solid {COLORS['accent_red']}">
+                {report.replace(chr(10), '<br>')}
+            </div>
+        </div>
+        """
+        self.text_area.append(formatted)
+
     def _tick_spinner(self):
         if self.is_running_ai or self.is_running_stt:
             self._spinner_idx = (self._spinner_idx + 1) % len(self.SPINNER_FRAMES)
@@ -492,18 +512,18 @@ class CopilotApp(QMainWindow):
         self._set_btn_style(self.btn_ai, True)
         self.spinner_timer.start(250)
 
-        selected_model = self.model_combo.currentData()
-        self.gemini_thread = GeminiWorker(
+        self.gemini_worker = GeminiWorker(
             audio_queue=self.audio_queue,
             image_queue=self.image_queue,
-            api_key=api_key,
+            api_key=os.environ.get("OPENROUTER_API_KEY", ""),
             result_callback=lambda text: self.signals.gemini_result.emit(text),
             error_callback=lambda err: self.signals.gemini_error.emit(err),
-            system_prompt=self.system_prompt,
-            model_name=selected_model,
-            get_code_state_callback=lambda: self._get_code_state_safe()
+            context_content=self.context_content,
+            model_name=self.model_combo.currentData(),
+            get_code_state_callback=self._get_code_state_safe,
+            chunk_callback=None
         )
-        self.gemini_thread.start()
+        self.gemini_worker.start()
 
     def _stop_ai(self):
         self.is_running_ai = False
@@ -572,37 +592,34 @@ class CopilotApp(QMainWindow):
             self._show_error(f"Error al capturar: {e}")
 
     def _display_response(self, text: str):
-        self._set_status("Respuesta generada", "running")
+        self._set_status("Respuesta generada", "idle")
         
-        formatted = text
+        import re
+        html_body = text.replace('\n', '<br>')
         
-        # Extraer bloque de código si existe
-        code_match = re.search(r"\[CÓDIGO\](.*?)\[/CÓDIGO\]", formatted, flags=re.DOTALL | re.IGNORECASE)
-        if code_match:
-            new_code = code_match.group(1).strip()
-            self._set_code_state_safe(new_code)
-            self.code_area.setPlainText(new_code)
-            # Reemplazar con un pequeño aviso visual en el chat
-            formatted = re.sub(
-                r"\[CÓDIGO\].*?\[/CÓDIGO\]", 
-                f'<div style="color: {COLORS["accent_blue"]};">[💻 Código actualizado en el panel derecho]</div>', 
-                formatted, 
-                flags=re.DOTALL | re.IGNORECASE
-            )
-        formatted = re.sub(
-            r"\[ESPAÑOL\](.*?)\[INGLÉS\](.*)",
-            f'<div style="color: {COLORS["accent_amber"]}; margin-bottom: 8px;"><b>[ESPAÑOL]</b>\\1</div><div style="color: {COLORS["accent_blue"]};"><b>[INGLÉS]</b>\\2</div>',
-            formatted, flags=re.DOTALL
-        )
+        # Extraer [ESPAÑOL] como pregunta/contexto
+        pregunta_match = re.search(r'\[ESPAÑOL\]:(.*?)(?=\[INGLÉS\]|$)', html_body, flags=re.IGNORECASE | re.DOTALL)
+        pregunta_texto = pregunta_match.group(1).strip() if pregunta_match else "(Contexto deducido)"
+        html_body = re.sub(r'\[ESPAÑOL\]:.*?(?=\[INGLÉS\]|$)', '', html_body, flags=re.IGNORECASE | re.DOTALL)
         
-        formatted = formatted.replace('\n', '<br>')
-        formatted = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', formatted)
-        formatted = re.sub(r'\*(.*?)\*', r'<i>\1</i>', formatted)
-        
-        formatted = re.sub(r'```(.*?)```', r'<pre style="background-color: #22273a; padding: 5px;">\1</pre>', formatted, flags=re.DOTALL)
-        
-        html = f'<div style="margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid {COLORS["border"]};">{formatted}</div>'
-        self.text_area.append(html)
+        # Extraer [INGLÉS] como respuesta sugerida
+        html_body = re.sub(r'\[INGLÉS\]:', '', html_body, flags=re.IGNORECASE)
+
+        formatted = f"""
+        <div style="margin-bottom: 20px; font-family: Segoe UI, sans-serif;">
+            <div style="color: {COLORS['accent_blue']}; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">Question / Context</div>
+            <div style="color: {COLORS['text_dim']}; font-size: 13px; margin-bottom: 12px; padding-left: 10px; border-left: 2px solid {COLORS['accent_blue']};">
+                <i>{pregunta_texto}</i>
+            </div>
+            
+            <div style="color: {COLORS['accent_green']}; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">Suggested Answer</div>
+            <div style="color: #ffffff; font-size: 15px; line-height: 1.5; padding: 12px; background-color: rgba(255,255,255,0.05); border-radius: 8px;">
+                {html_body}
+            </div>
+        </div>
+        <hr style="border: 0; height: 1px; background-color: {COLORS['border']}; margin: 20px 0;">
+        """
+        self.text_area.append(formatted)
         
         scrollbar = self.text_area.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
