@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer, QObject, Signal
 
 from copilot.config import (
-    GEMINI_MODEL,
     load_resume,
     build_system_prompt,
 )
@@ -109,9 +108,6 @@ class TitleBar(QFrame):
         lbl_title.setStyleSheet("font-weight: bold; font-size: 10pt;")
         layout.addWidget(lbl_title)
 
-        lbl_model = QLabel(GEMINI_MODEL)
-        lbl_model.setStyleSheet(f"color: {COLORS['text_muted']}; font-family: Consolas; font-size: 9pt;")
-        layout.addWidget(lbl_model)
 
         layout.addStretch()
 
@@ -267,6 +263,19 @@ class CopilotApp(QMainWindow):
         self._populate_devices()
         dev_layout.addWidget(self.device_combo, 1)
         config_layout.addLayout(dev_layout)
+        
+        model_layout = QHBoxLayout()
+        lbl_model = QLabel("Modelo IA")
+        lbl_model.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 9pt;")
+        model_layout.addWidget(lbl_model)
+        
+        self.model_combo = QComboBox()
+        self.model_combo.addItem("1. Rapidez Extrema (Gemini 2.5 Flash)", "google/gemini-2.5-flash")
+        self.model_combo.addItem("2. Ágil (Gemini 2.5 Pro)", "google/gemini-2.5-pro")
+        self.model_combo.addItem("3. Inteligente (Claude Sonnet 4-6)", "anthropic/claude-sonnet-4-6")
+        self.model_combo.addItem("4. Máxima Inteligencia (Claude Opus 4-8)", "anthropic/claude-opus-4-8")
+        model_layout.addWidget(self.model_combo, 1)
+        config_layout.addLayout(model_layout)
         
         main_layout.addWidget(config_panel)
 
@@ -483,6 +492,7 @@ class CopilotApp(QMainWindow):
         self._set_btn_style(self.btn_ai, True)
         self.spinner_timer.start(250)
 
+        selected_model = self.model_combo.currentData()
         self.gemini_thread = GeminiWorker(
             audio_queue=self.audio_queue,
             image_queue=self.image_queue,
@@ -490,6 +500,7 @@ class CopilotApp(QMainWindow):
             result_callback=lambda text: self.signals.gemini_result.emit(text),
             error_callback=lambda err: self.signals.gemini_error.emit(err),
             system_prompt=self.system_prompt,
+            model_name=selected_model,
             get_code_state_callback=lambda: self._get_code_state_safe()
         )
         self.gemini_thread.start()
@@ -602,11 +613,12 @@ class CopilotApp(QMainWindow):
         self.text_area.append(html)
 
     def _show_startup_message(self):
+        selected_model = self.model_combo.currentData()
         msg = f"""
         <div style="color: {COLORS['accent_blue']};">
             <b>Interview Copilot (PySide6 Overlay)</b><br>
             Proveedor: OPENROUTER<br>
-            Modelo: {GEMINI_MODEL}<br><br>
+            Modelo seleccionado: {selected_model}<br><br>
             <i>Atajo Global: Presiona <b>Ctrl+Shift+H</b> para ocultar/mostrar.</i>
         </div>
         """

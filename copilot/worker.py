@@ -4,7 +4,6 @@ import queue
 import base64
 import io
 from typing import Callable
-from copilot.config import GEMINI_MODEL
 from copilot.logger import get_logger
 
 logger = get_logger(__name__)
@@ -18,6 +17,7 @@ class GeminiWorker(threading.Thread):
         result_callback: Callable[[str], None],
         error_callback: Callable[[str], None],
         system_prompt: str,
+        model_name: str,
         get_code_state_callback: Callable[[], str] = None,
     ):
         super().__init__(daemon=True, name="GeminiWorkerThread")
@@ -27,6 +27,7 @@ class GeminiWorker(threading.Thread):
         self.result_callback = result_callback
         self.error_callback  = error_callback
         self.system_prompt   = system_prompt
+        self.model_name      = model_name
         self.get_code_state_callback = get_code_state_callback
         self.memory_buffer   = []
         self._stop_event     = threading.Event()
@@ -43,7 +44,7 @@ class GeminiWorker(threading.Thread):
         client_or = openai.OpenAI(base_url="https://openrouter.ai/api/v1", api_key=self.api_key)
             
         if self.api_key:
-            logger.info(f"GeminiWorker iniciado con API key válida — modelo: {GEMINI_MODEL}")
+            logger.info(f"GeminiWorker iniciado con API key válida — modelo: {self.model_name}")
         else:
             self.error_callback("API key inválida")
             return
@@ -112,7 +113,7 @@ class GeminiWorker(threading.Thread):
                     })
                     
                 resp = client_or.chat.completions.create(
-                    model=GEMINI_MODEL,
+                    model=self.model_name,
                     messages=[
                         {
                             "role": "system",
