@@ -3,6 +3,7 @@ import threading
 import array
 import queue
 import wave
+import time
 from io import BytesIO
 from collections import deque
 from typing import Optional, Callable
@@ -134,8 +135,15 @@ class AudioCapture(threading.Thread):
                     try:
                         data = stream.read(to_read, exception_on_overflow=False)
                     except OSError as read_err:
-                        self._notify_error(f"Error de lectura de audio: {read_err}")
-                        break
+                        err_str = str(read_err)
+                        # -9999: Unanticipated host error (occurs in WASAPI loopback when system is silent)
+                        # -9981: Input overflowed (occurs occasionally, can be ignored)
+                        if "-9999" in err_str or "Unanticipated host error" in err_str or "-9981" in err_str:
+                            data = b'\x00' * (to_read * 2 * actual_channels)
+                            time.sleep(to_read / actual_rate)
+                        else:
+                            self._notify_error(f"Error de lectura de audio: {read_err}")
+                            break
                     collected_frames.append(data)
                     frames_collected += to_read
 
