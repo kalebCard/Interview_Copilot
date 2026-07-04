@@ -1,11 +1,13 @@
 
 import sys
 import os
+import signal
 import time
 import queue
 import re
 import ctypes
 import keyboard
+import threading
 from typing import Optional
 
 from PySide6.QtWidgets import (
@@ -164,8 +166,17 @@ class CopilotApp(QMainWindow):
         self.is_running_stt = False
         self.is_running_ai = False
         self.current_code_state = ""
+        self.code_state_lock = threading.Lock()
 
         self._spinner_idx = 0
+        
+    def _get_code_state_safe(self):
+        with self.code_state_lock:
+            return self.current_code_state
+
+    def _set_code_state_safe(self, code):
+        with self.code_state_lock:
+            self.current_code_state = code
         self.spinner_timer = QTimer(self)
         self.spinner_timer.timeout.connect(self._tick_spinner)
 
@@ -478,7 +489,7 @@ class CopilotApp(QMainWindow):
             result_callback=lambda text: self.signals.gemini_result.emit(text),
             error_callback=lambda err: self.signals.gemini_error.emit(err),
             system_prompt=self.system_prompt,
-            get_code_state_callback=lambda: self.current_code_state
+            get_code_state_callback=lambda: self._get_code_state_safe()
         )
         self.gemini_thread.start()
 
@@ -557,13 +568,18 @@ class CopilotApp(QMainWindow):
         code_match = re.search(r"\[CÓDIGO\](.*?)\[/CÓDIGO\]", formatted, flags=re.DOTALL | re.IGNORECASE)
         if code_match:
             new_code = code_match.group(1).strip()
-            self.current_code_state = new_code
+            self._set_code_state_safe(new_code)
             self.code_area.setPlainText(new_code)
             # Reemplazar con un pequeño aviso visual en el chat
-            formatted = re.sub(r"\[CÓDIGO\].*?\[/CÓDIGO\]", f'<div style="color: {COLORS["accent_blue"]};">[💻 Código actualizado en el panel derecho]</div>', formatted, flags=re.DOTALL | re.IGNORECASE)
+            formatted = re.sub(
+                r"\[CÓDIGO\].*?\[/CÓDIGO\]", 
+                f'<div style="color: {COLORS["accent_blue"]};">[💻 Código actualizado en el panel derecho]</div>', 
+                formatted, 
+                flags=re.DOTALL | re.IGNORECASE
+            )
         formatted = re.sub(
-            r"\[ESPAÑOL\](.*?)\[INGLÉS\]",
-            f'<div style="color: {COLORS["accent_amber"]}; margin-bottom: 8px;"><b>[ESPAÑOL]</b>\\1</div><div style="color: {COLORS["accent_blue"]};"><b>[INGLÉS]</b>',
+            r"\[ESPAÑOL\](.*?)\[INGLÉS\](.*)",
+            f'<div style="color: {COLORS["accent_amber"]}; margin-bottom: 8px;"><b>[ESPAÑOL]</b>\\1</div><div style="color: {COLORS["accent_blue"]};"><b>[INGLÉS]</b>\\2</div>',
             formatted, flags=re.DOTALL
         )
         
@@ -610,7 +626,6 @@ class CopilotApp(QMainWindow):
         if self.is_running_stt:
             self._stop_stt()
         event.accept()
-import signal
 
 def run_app():
     # Permite que la aplicación PySide6 se cierre correctamente si presionas Ctrl+C en la terminal

@@ -4,43 +4,20 @@ import queue
 import io
 import re
 import speech_recognition as sr
-from deep_translator import GoogleTranslator
 from copilot.logger import get_logger
-from typing import Callable, Optional, List
 
 logger = get_logger(__name__)
 
+try:
+    from deep_translator import GoogleTranslator
+except ImportError:
+    GoogleTranslator = None
+    logger.error("deep-translator no instalado. Ejecuta: pip install deep-translator")
+from typing import Callable, Optional, List
+
 MAX_CONCURRENT_PROCESSING = 3
 
-BANNED_PATTERNS = [
-    r"\bnigg[aer]s?\b", r"\bchild(ren)?\b", r"\bkid(s)?\b", r"\bminor(s)?\b",
-    r"\bteen(s|ager|agers)?\b", r"\bbaby\b", r"\btoddler(s)?\b", r"\byoungster(s)?\b",
-    r"\bschool\b", r"\bstudent(s)?\b", r"\bage\s?\d+\b"
-]
-BANNED_REGEX = re.compile("|".join(BANNED_PATTERNS), re.IGNORECASE)
 
-def split_text(text: str, max_chars: int = 30) -> List[str]:
-    if not text or max_chars <= 0:
-        return []
-    words = text.split()
-    chunks = []
-    current = ""
-    for word in words:
-        if len(current) + len(word) + 1 <= max_chars:
-            current += " " + word if current else word
-        else:
-            if current:
-                chunks.append(current)
-            current = word
-    if current:
-        chunks.append(current)
-    return chunks
-
-def remove_banned_words(text: str) -> str:
-    if not text:
-        return ""
-    cleaned = BANNED_REGEX.sub("", text)
-    return re.sub(r"\s{2,}", " ", cleaned).strip()
 
 def normalize_text(text: str) -> str:
 
@@ -107,7 +84,6 @@ class TranscriptionWorker(threading.Thread):
             try:
                 spanish_text = translator.translate(english_text)
                 spanish_text = normalize_text(spanish_text)
-                spanish_text = remove_banned_words(spanish_text)
                 
                 if is_valid_text(spanish_text):
                     logger.info(f"Subtítulo generado: {spanish_text}")

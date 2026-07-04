@@ -2,6 +2,7 @@
 import threading
 import queue
 import base64
+import io
 from typing import Callable
 from copilot.config import GEMINI_MODEL
 from copilot.logger import get_logger
@@ -41,30 +42,33 @@ class GeminiWorker(threading.Thread):
             return
         client_or = openai.OpenAI(base_url="https://openrouter.ai/api/v1", api_key=self.api_key)
             
-        logger.info(f"GeminiWorker iniciado — modelo: {GEMINI_MODEL}")
+        if self.api_key:
+            logger.info(f"GeminiWorker iniciado con API key válida — modelo: {GEMINI_MODEL}")
+        else:
+            self.error_callback("API key inválida")
+            return
 
         while not self._stop_event.is_set():
             wav_bytes = None
             img_bytes = None
 
             try:
-                wav_bytes = self.audio_queue.get_nowait()
+                wav_bytes = self.audio_queue.get(timeout=0.1)
             except queue.Empty:
                 pass
 
             try:
                 img_obj = self.image_queue.get_nowait()
-                if img_obj:
-                    import io
+                if img_obj and hasattr(img_obj, 'convert'):
                     buf = io.BytesIO()
                     img_obj.convert("RGB").save(buf, format="JPEG")
                     img_bytes = buf.getvalue()
-            except queue.Empty:
+            except (queue.Empty, AttributeError, Exception) as e:
+                if not isinstance(e, queue.Empty):
+                    logger.warning(f"Error procesando imagen: {e}")
                 pass
 
             if wav_bytes is None and img_bytes is None:
-                import time
-                time.sleep(0.1)
                 continue
 
             try:
@@ -130,8 +134,11 @@ class GeminiWorker(threading.Thread):
                         
                         # Guardar en la memoria a corto plazo si hubo respuesta válida
                         self.memory_buffer.append(response_text)
-                        if len(self.memory_buffer) > 6:
+                        
+                        estimated_tokens = sum(len(text.split()) * 1.3 for text in self.memory_buffer)
+                        while estimated_tokens > 2000 and len(self.memory_buffer) > 1:
                             self.memory_buffer.pop(0)
+                            estimated_tokens = sum(len(text.split()) * 1.3 for text in self.memory_buffer)
                 else:
                     logger.info("Gemini devolvió una respuesta vacía para este chunk.")
 

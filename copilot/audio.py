@@ -173,7 +173,7 @@ class AudioCapture(threading.Thread):
                                 try:
                                     self.stt_queue.put_nowait(wav_stt)
                                 except queue.Full:
-                                    pass
+                                    logger.warning("Cola de STT llena, descartando frame de audio.")
                             audio_buffer_stt = []
                             stt_flushed = True
                         
@@ -186,7 +186,7 @@ class AudioCapture(threading.Thread):
                                 try:
                                     self.ai_queue.put_nowait(wav_ai)
                                 except queue.Full:
-                                    pass
+                                    logger.warning("Cola de AI llena, descartando frame de audio.")
                             
                             audio_buffer_ai = []
                             audio_buffer_stt = []
@@ -194,9 +194,15 @@ class AudioCapture(threading.Thread):
                             stt_flushed = False
                             silence_blocks_count = 0
                     else:
-
-                        audio_buffer_ai = [raw_pcm]
-                        audio_buffer_stt = [raw_pcm]
+                        if not audio_buffer_ai or not speech_active:
+                            audio_buffer_ai = [raw_pcm]
+                        else:
+                            audio_buffer_ai.append(raw_pcm)
+                        
+                        if not audio_buffer_stt or not speech_active:
+                            audio_buffer_stt = [raw_pcm]
+                        else:
+                            audio_buffer_stt.append(raw_pcm)
                         
                 if len(audio_buffer_stt) >= max_blocks_stt and speech_active:
                     if self.stt_queue:
@@ -204,7 +210,7 @@ class AudioCapture(threading.Thread):
                         try:
                             self.stt_queue.put_nowait(wav_stt)
                         except queue.Full:
-                            pass
+                            logger.warning("Cola de STT llena, descartando frame de audio.")
                     audio_buffer_stt = []
 
                 if len(audio_buffer_ai) >= max_blocks_ai and speech_active:
@@ -214,7 +220,7 @@ class AudioCapture(threading.Thread):
                         try:
                             self.ai_queue.put_nowait(wav_ai)
                         except queue.Full:
-                            pass
+                            logger.warning("Cola de AI llena, descartando frame de audio.")
                     audio_buffer_ai = []
 
         except Exception as exc:
