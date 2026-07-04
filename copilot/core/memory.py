@@ -29,30 +29,49 @@ def init_db():
 
 
 def add_interaction(session_id: str, question: str, answer: str, category: str = "general"):
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute(
-            "INSERT INTO interactions (session_id, timestamp, category, question, answer) VALUES (?, ?, ?, ?, ?)",
-            (session_id, time.time(), category, question, answer)
-        )
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute(
+                "INSERT INTO interactions (session_id, timestamp, category, question, answer) VALUES (?, ?, ?, ?, ?)",
+                (session_id, time.time(), category, question, answer)
+            )
+            conn.commit()
+    except sqlite3.OperationalError as e:
+        import logging
+        logging.error(f"Error guardando interacción: {e}")
 
 def get_recent_context(session_id: str, max_tokens: int = 2000) -> List[str]:
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.execute(
-            "SELECT question, answer FROM interactions WHERE session_id = ? ORDER BY timestamp ASC",
-            (session_id,)
-        )
-        rows = cursor.fetchall()
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT question, answer FROM interactions WHERE session_id = ? ORDER BY timestamp ASC LIMIT 100",
+                (session_id,)
+            )
+            rows = cursor.fetchall()
+    except sqlite3.OperationalError as e:
+        import logging
+        logging.error(f"Error al leer contexto: {e}")
+        return []
         
     context: List[str] = []
     current_tokens: float = 0.0
-    for q, a in rows:
-        turn = f"Question: {q}\nAnswer: {a}"
-        est_tokens = len(turn.split()) * 1.3
+    
+    try:
+        import tiktoken
+        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+        def estimate_tokens(text): return len(encoding.encode(text))
+    except ImportError:
+        def estimate_tokens(text): return len(text.split()) * 1.3
+        
+    for r in rows:
+        turn = f"Question: {r['question']}\nAnswer: {r['answer']}"
+        est_tokens = estimate_tokens(turn)
         context.append(turn)
         current_tokens += est_tokens
         while current_tokens > max_tokens and context:
             removed_turn = context.pop(0)
-            current_tokens -= len(removed_turn.split()) * 1.3
+            current_tokens -= estimate_tokens(removed_turn)
         
     return context
 

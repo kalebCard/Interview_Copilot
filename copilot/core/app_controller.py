@@ -32,6 +32,7 @@ class AppController:
         self.audio_thread: Optional[AudioCapture] = None
         self.gemini_thread: Optional[GeminiWorker] = None
         self.transcription_thread: Optional[TranscriptionWorker] = None
+        self.audio_thread_lock = threading.Lock()
         
         self.is_running_stt = False
         self.is_running_ai = False
@@ -68,7 +69,7 @@ class AppController:
     def check_audio_capture_stop(self):
         if not self.is_running_ai and not self.is_running_stt:
             self.status_update_cb("Listo", "idle")
-            with self.code_state_lock:
+            with self.audio_thread_lock:
                 if self.audio_thread:
                     self.audio_thread.stop()
                     self.audio_thread.join(timeout=2)

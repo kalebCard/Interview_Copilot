@@ -137,7 +137,10 @@ class GeminiWorker(threading.Thread):
                     classify_future = executor.submit(_classify)
                 
                     # While classification runs, prepare other data
-                    category = classify_future.result(timeout=15)
+                    category = classify_future.result(timeout=20)
+                except concurrent.futures.TimeoutError:
+                    logger.warning("Clasificación timeout. Usando categoría por defecto.")
+                    category = "General"
                 finally:
                     executor.shutdown(wait=True)
                     

@@ -190,7 +190,7 @@ class AudioCapture(threading.Thread):
                             audio_buffer_stt = []
                             stt_flushed = True
                             
-                        if not stt_flushed:
+                        elif not stt_flushed:
                             audio_buffer_stt.append(raw_pcm)
                         
                         if silence_blocks_count >= silence_timeout_blocks:
@@ -210,9 +210,10 @@ class AudioCapture(threading.Thread):
                             stt_flushed = False
                             silence_blocks_count = 0
                     else:
-                        # Pre-roll: keep one block of silence as lead-in for next speech segment
-                        audio_buffer_ai = [raw_pcm]
-                        audio_buffer_stt = [raw_pcm]
+                        # Pre-roll: keep ONLY ONE block of silence if buffer is empty
+                        if not audio_buffer_ai:
+                            audio_buffer_ai = [raw_pcm]
+                            audio_buffer_stt = [raw_pcm]
                         
                 if len(audio_buffer_stt) >= max_blocks_stt and speech_active and not stt_flushed:
                     if self.stt_queue:

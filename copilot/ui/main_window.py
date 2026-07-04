@@ -328,10 +328,9 @@ class CopilotApp(QMainWindow):
         else:
             api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
             self.controller.start_ai(api_key, settings.get("model"), None)
-            if self.controller.is_running_ai:
-                self.btn_ai.setText("■ Stop Gemini")
-                self._set_btn_style(self.btn_ai, True)
-                self.spinner_timer.start(250)
+            self.btn_ai.setText("■ Stop Gemini")
+            self._set_btn_style(self.btn_ai, True)
+            self.spinner_timer.start(250)
 
     def _capture_screen(self):
         self.hide()
