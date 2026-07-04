@@ -16,6 +16,8 @@ from copilot.core.logger import get_logger
 from copilot.ui.theme import COLORS, MAIN_STYLE
 from copilot.ui.title_bar import TitleBar
 from copilot.core.app_controller import AppController
+from copilot.core import settings
+from copilot.ui.settings_dialog import SettingsDialog
 
 logger = get_logger(__name__)
 
@@ -63,13 +65,27 @@ class CopilotApp(QMainWindow):
         self.subtitle_idle_timer.setSingleShot(True)
         self.subtitle_idle_timer.timeout.connect(self._clear_subtitle)
 
-        try:
-            keyboard.add_hotkey('ctrl+shift+h', lambda: self.signals.toggle_visibility.emit())
-        except Exception as e:
-            logger.warning(f"No se pudo registrar atajo global: {e}")
+        settings.load_settings()
+        self._register_hotkeys()
 
         self._configure_window()
         self._build_ui()
+
+    def _register_hotkeys(self):
+        try:
+            keyboard.unhook_all_hotkeys()
+        except Exception:
+            pass
+        
+        def safe_add(key_str, callback):
+            if key_str:
+                try: keyboard.add_hotkey(key_str, callback)
+                except Exception as e: logger.warning(f"Error registrando atajo {key_str}: {e}")
+
+        safe_add(settings.get("hotkey_toggle_visibility"), lambda: self.signals.toggle_visibility.emit())
+        safe_add(settings.get("hotkey_toggle_ai"), self._toggle_ai)
+        safe_add(settings.get("hotkey_toggle_stt"), self._toggle_stt)
+        safe_add(settings.get("hotkey_capture_screen"), self._capture_screen)
 
     def _configure_window(self):
         self.setWindowTitle("Interview Copilot")
@@ -113,25 +129,7 @@ class CopilotApp(QMainWindow):
         b1.setStyleSheet(f"background-color: {COLORS['border']};")
         main_layout.addWidget(b1)
 
-        config_panel = QWidget()
-        config_panel.setStyleSheet(f"background-color: {COLORS['surface']};")
-        config_layout = QVBoxLayout(config_panel)
-        config_layout.setContentsMargins(16, 12, 16, 12)
-        
-        model_layout = QHBoxLayout()
-        lbl_model = QLabel("Modelo IA")
-        lbl_model.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 9pt;")
-        model_layout.addWidget(lbl_model)
-        
-        self.model_combo = QComboBox()
-        self.model_combo.addItem("1. Rapidez Extrema (Gemini 2.5 Flash)", "google/gemini-2.5-flash")
-        self.model_combo.addItem("2. Ágil (Gemini 2.5 Pro)", "google/gemini-2.5-pro")
-        self.model_combo.addItem("3. Inteligente (Claude Sonnet 4-6)", "anthropic/claude-sonnet-4-6")
-        self.model_combo.addItem("4. Máxima Inteligencia (Claude Opus 4-8)", "anthropic/claude-opus-4-8")
-        model_layout.addWidget(self.model_combo, 1)
-        config_layout.addLayout(model_layout)
-        
-        main_layout.addWidget(config_panel)
+
 
         status_panel = QWidget()
         status_layout = QHBoxLayout(status_panel)
@@ -171,6 +169,12 @@ class CopilotApp(QMainWindow):
         self._set_btn_style(self.btn_coach, False)
         self.btn_coach.clicked.connect(self._run_coach)
         ctrl_layout.addWidget(self.btn_coach)
+
+        self.btn_settings = QPushButton("⚙")
+        self.btn_settings.setFixedSize(45, 45)
+        self._set_btn_style(self.btn_settings, False)
+        self.btn_settings.clicked.connect(self._open_settings)
+        ctrl_layout.addWidget(self.btn_settings)
 
         main_layout.addLayout(ctrl_layout)
 
@@ -323,7 +327,7 @@ class CopilotApp(QMainWindow):
             self._set_btn_style(self.btn_ai, False)
         else:
             api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-            self.controller.start_ai(api_key, self.model_combo.currentData(), None)
+            self.controller.start_ai(api_key, settings.get("model"), None)
             if self.controller.is_running_ai:
                 self.btn_ai.setText("■ Stop Gemini")
                 self._set_btn_style(self.btn_ai, True)
@@ -383,13 +387,15 @@ class CopilotApp(QMainWindow):
         self.text_area.append(html)
 
     def _show_startup_message(self):
-        selected_model = self.model_combo.currentData()
+        selected_model = settings.get("model")
+        hk_vis = settings.get("hotkey_toggle_visibility", "ctrl+shift+h")
+        
         msg = f"""
         <div style="color: {COLORS['accent_blue']};">
             <b>Interview Copilot (PySide6 Overlay)</b><br>
             Proveedor: OPENROUTER<br>
             Modelo seleccionado: {selected_model}<br><br>
-            <i>Atajo Global: Presiona <b>Ctrl+Shift+H</b> para ocultar/mostrar.</i>
+            <i>Atajos habilitados. Ocultar/mostrar UI: <b>{hk_vis}</b></i>
         </div>
         """
         if "WARNING" in self.controller.context_content:
@@ -403,8 +409,19 @@ class CopilotApp(QMainWindow):
         else:
             self.show()
 
+    def _open_settings(self):
+        dlg = SettingsDialog(self)
+        if dlg.exec():
+            # Apply new settings
+            self._register_hotkeys()
+            self._show_startup_message()
+
     def closeEvent(self, event):
         self.controller.stop_all()
+        try:
+            keyboard.unhook_all_hotkeys()
+        except Exception:
+            pass
         event.accept()
 
 def run_app():
