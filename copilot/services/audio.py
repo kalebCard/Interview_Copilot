@@ -8,6 +8,11 @@ from io import BytesIO
 from collections import deque
 from typing import Optional, Callable
 
+try:
+    import pyaudiowpatch as pyaudio
+except ImportError:
+    pyaudio = None
+
 from copilot.core.config import (
     VAD_BLOCK_DURATION,
     VAD_SILENCE_TIMEOUT,
@@ -75,9 +80,7 @@ class AudioCapture(threading.Thread):
             self.error_callback(msg)
 
     def run(self) -> None:
-        try:
-            import pyaudiowpatch as pyaudio
-        except ImportError:
+        if pyaudio is None:
             self._notify_error("PyAudio no instalado. Ejecuta: pip install PyAudioWPatch")
             return
 

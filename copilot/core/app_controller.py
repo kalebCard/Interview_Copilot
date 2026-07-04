@@ -7,6 +7,12 @@ from copilot.services.worker import GeminiWorker
 from copilot.services.translator import TranscriptionWorker
 from copilot.services.vscode import read_vscode_state
 from copilot.core.config import load_context
+from copilot.services.coach import generate_coach_report
+
+try:
+    from PIL import ImageGrab
+except ImportError:
+    ImageGrab = None
 
 logger = get_logger(__name__)
 
@@ -135,7 +141,9 @@ class AppController:
             return False
             
         try:
-            from PIL import ImageGrab
+            if ImageGrab is None:
+                raise ImportError("PIL (Pillow) no está instalado.")
+                
             img = ImageGrab.grab(all_screens=True)
             if self.image_queue.full():
                 try:
@@ -151,7 +159,6 @@ class AppController:
 
     def run_coach(self, report_cb: Callable[[str], None]):
         def run():
-            from copilot.services.coach import generate_coach_report
             report = generate_coach_report("default_session")
             report_cb(report)
         threading.Thread(target=run, daemon=True).start()

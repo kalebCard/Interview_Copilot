@@ -1,8 +1,14 @@
 import sqlite3
 from pathlib import Path
 import time
+import logging
 from typing import List, Tuple
 from copilot.core.config import PROJECT_ROOT
+
+try:
+    import tiktoken
+except ImportError:
+    tiktoken = None
 
 DB_PATH = PROJECT_ROOT / "data" / "interviews.db"
 
@@ -37,7 +43,6 @@ def add_interaction(session_id: str, question: str, answer: str, category: str =
             )
             conn.commit()
     except sqlite3.OperationalError as e:
-        import logging
         logging.error(f"Error guardando interacción: {e}")
 
 def get_recent_context(session_id: str, max_tokens: int = 2000) -> List[str]:
@@ -50,18 +55,16 @@ def get_recent_context(session_id: str, max_tokens: int = 2000) -> List[str]:
             )
             rows = cursor.fetchall()
     except sqlite3.OperationalError as e:
-        import logging
         logging.error(f"Error al leer contexto: {e}")
         return []
         
     context: List[str] = []
     current_tokens: float = 0.0
     
-    try:
-        import tiktoken
+    if tiktoken is not None:
         encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
         def estimate_tokens(text): return len(encoding.encode(text))
-    except ImportError:
+    else:
         def estimate_tokens(text): return len(text.split()) * 1.3
         
     for r in rows:
