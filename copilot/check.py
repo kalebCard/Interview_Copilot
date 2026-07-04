@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 
-from copilot.config import RESUME_FILENAME, load_resume
+from copilot.config import load_context, CONTEXT_DIR
 
 def run_check() -> None:
     print("\n===========================================")
@@ -11,12 +11,12 @@ def run_check() -> None:
 
     all_ok = True
 
-    resume = load_resume()
-    if "WARNING" in resume:
-        print(f"  [WARN]  {RESUME_FILENAME} no encontrado en {Path.cwd()}")
+    context_str = load_context()
+    if "WARNING" in context_str:
+        print(f"  [WARN]  Contexto no encontrado en {CONTEXT_DIR} ni en hoja_de_vida.md")
         all_ok = False
     else:
-        print(f"  [OK]    {RESUME_FILENAME} cargado ({len(resume)} caracteres)")
+        print(f"  [OK]    Contexto cargado ({len(context_str)} caracteres)")
 
     api_key = os.environ.get("OPENROUTER_API_KEY", "")
     key_name = "OPENROUTER_API_KEY"

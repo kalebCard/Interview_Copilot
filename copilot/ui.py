@@ -639,8 +639,8 @@ class CopilotApp(QMainWindow):
             <i>Atajo Global: Presiona <b>Ctrl+Shift+H</b> para ocultar/mostrar.</i>
         </div>
         """
-        if "WARNING" in self.resume_content:
-            msg += f"<div style='color: {COLORS['accent_red']};'><br>{self.resume_content}</div>"
+        if "WARNING" in self.context_content:
+            msg += f"<div style='color: {COLORS['accent_red']};'><br>{self.context_content}</div>"
         
         self.text_area.setHtml(msg)
 
