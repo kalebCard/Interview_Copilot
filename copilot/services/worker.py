@@ -45,13 +45,15 @@ class GeminiWorker(threading.Thread):
         self._stop_event.set()
         self.classifier_executor.shutdown(wait=False)
 
-    def _build_user_content(self, wav_bytes: Optional[bytes], img_bytes: Optional[bytes]) -> tuple[str, list[dict[str, Any]]]:
-        text_prompt = (
-            "Analyze the interview question spoken in this audio clip "
-            "(and the provided screenshot if present) "
-            "and provide your structured [ESPAÑOL] / [INGLÉS] response "
-            "according to your instructions."
-        )
+    def _build_user_content(self, wav_bytes: Optional[bytes], img_bytes: Optional[bytes]) -> tuple[str, str, list[dict[str, Any]]]:
+        if wav_bytes and img_bytes:
+            base_text_prompt = "Analyze the interview question spoken in this audio clip AND the provided screenshot. Provide your structured [ESPAÑOL] / [INGLÉS] response."
+        elif img_bytes:
+            base_text_prompt = "Analyze the provided screenshot which contains an interview problem or code. Provide your structured [ESPAÑOL] / [INGLÉS] response with instructions on how to solve it."
+        else:
+            base_text_prompt = "Analyze the interview question spoken in this audio clip. Provide your structured [ESPAÑOL] / [INGLÉS] response."
+
+        text_prompt = base_text_prompt
 
         recent_context = get_recent_context("default_session", max_tokens=2000)
         if recent_context:
@@ -86,8 +88,7 @@ class GeminiWorker(threading.Thread):
                 "image_url": {"url": f"data:image/jpeg;base64,{base64_img}"}
             })
             
-        return text_prompt, user_content
-
+        return base_text_prompt, text_prompt, user_content
     def _classify_question(self, llm_client: LLMClient, user_content: list[dict[str, Any]]) -> str:
         def _classify():
             try:
@@ -113,7 +114,7 @@ class GeminiWorker(threading.Thread):
             logger.warning("Clasificación timeout. Usando categoría por defecto.")
             return "General"
 
-    def _generate_response(self, llm_client: LLMClient, category: str, text_prompt: str, user_content: list[dict[str, Any]]) -> None:
+    def _generate_response(self, llm_client: LLMClient, category: str, base_text_prompt: str, user_content: list[dict[str, Any]]) -> None:
         category_prompt = PROMPTS.get(category, PROMPTS["General"])
         dynamic_system_prompt = build_system_prompt(self.context_content, category_prompt)
         
@@ -146,7 +147,7 @@ class GeminiWorker(threading.Thread):
                 logger.info("Chunk ignorado por no contener pregunta.")
             else:
                 self.result_callback(response_text)
-                add_interaction("default_session", text_prompt, response_text, category)
+                add_interaction("default_session", base_text_prompt, response_text, category)
         else:
             logger.info("Gemini devolvió una respuesta vacía para este chunk.")
 
@@ -182,9 +183,9 @@ class GeminiWorker(threading.Thread):
                 continue
 
             try:
-                text_prompt, user_content = self._build_user_content(wav_bytes, img_bytes)
+                base_text_prompt, text_prompt, user_content = self._build_user_content(wav_bytes, img_bytes)
                 category = self._classify_question(llm_client, user_content)
-                self._generate_response(llm_client, category, text_prompt, user_content)
+                self._generate_response(llm_client, category, base_text_prompt, user_content)
 
             except Exception as api_err:
                 err_msg = str(api_err).lower()
