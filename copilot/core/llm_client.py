@@ -35,10 +35,11 @@ class LLMClient:
                 err_msg = str(api_err).lower()
                 if "429" in err_msg or "quota" in err_msg or "too many requests" in err_msg:
                     attempt += 1
-                    logger.warning(f"Límite de API alcanzado (429). Reintentando en 5s... (Intento {attempt}/{max_retries})")
+                    backoff_time = 2 ** attempt
+                    logger.warning(f"Límite de API alcanzado (429). Reintentando en {backoff_time}s... (Intento {attempt}/{max_retries})")
                     if attempt >= max_retries:
                         raise api_err
-                    time.sleep(5)
+                    time.sleep(backoff_time)
                 else:
                     raise api_err
         raise Exception("Se alcanzó el número máximo de reintentos.")

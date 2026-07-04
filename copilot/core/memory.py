@@ -6,10 +6,7 @@ import logging
 from typing import List, Tuple
 from copilot.core.config import PROJECT_ROOT
 
-try:
-    import tiktoken
-except ImportError:
-    tiktoken = None
+import tiktoken
 
 DB_PATH = PROJECT_ROOT / "data" / "interviews.db"
 
@@ -23,6 +20,7 @@ def init_db():
             return
         _db_initialized = True
         with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("""
             CREATE TABLE IF NOT EXISTS interactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,6 +38,7 @@ def init_db():
 def add_interaction(session_id: str, question: str, answer: str, category: str = "general"):
     try:
         with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
             conn.execute(
                 "INSERT INTO interactions (session_id, timestamp, category, question, answer) VALUES (?, ?, ?, ?, ?)",
                 (session_id, time.time(), category, question, answer)
@@ -51,6 +50,7 @@ def add_interaction(session_id: str, question: str, answer: str, category: str =
 def get_recent_context(session_id: str, max_tokens: int = 1500) -> List[str]:
     try:
         with sqlite3.connect(DB_PATH, timeout=5) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT question, answer FROM interactions WHERE session_id = ? ORDER BY timestamp ASC LIMIT 100",
@@ -64,13 +64,10 @@ def get_recent_context(session_id: str, max_tokens: int = 1500) -> List[str]:
     context: List[str] = []
     current_tokens: float = 0.0
     
-    if tiktoken is not None:
-        try:
-            encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
-            def estimate_tokens(text): return len(encoding.encode(text))
-        except Exception:
-            def estimate_tokens(text): return len(text.split()) * 1.3
-    else:
+    try:
+        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+        def estimate_tokens(text): return len(encoding.encode(text))
+    except Exception:
         def estimate_tokens(text): return len(text.split()) * 1.3
         
     for r in rows:
@@ -86,6 +83,7 @@ def get_recent_context(session_id: str, max_tokens: int = 1500) -> List[str]:
 
 def get_session_history(session_id: str) -> List[Tuple]:
     with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
         cursor = conn.execute(
             "SELECT timestamp, category, question, answer FROM interactions WHERE session_id = ? ORDER BY timestamp ASC",
             (session_id,)

@@ -1,58 +1,55 @@
 import json
-from typing import Any, Dict, List, Tuple
-from copilot.core.config import PROJECT_ROOT
+from pathlib import Path
+from typing import Dict, Any
 from copilot.core.logger import get_logger
 
 logger = get_logger(__name__)
 
+# To prevent circular import with config.py, compute data path directly
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 SETTINGS_FILE = PROJECT_ROOT / "data" / "settings.json"
 
-MODELS: List[Tuple[str, str]] = [
-    ("Rapidez Extrema - Gemini 2.5 Flash",   "google/gemini-2.5-flash"),
-    ("Agil - Gemini 2.5 Pro",                "google/gemini-2.5-pro"),
-    ("Inteligente - Claude Sonnet 4.6",       "anthropic/claude-sonnet-4-6"),
-    ("Maxima Inteligencia - Claude Opus 4.8", "anthropic/claude-opus-4-8"),
-]
-
-DEFAULTS: Dict[str, Any] = {
-    "hotkey_toggle_visibility": "ctrl+shift+h",
-    "hotkey_capture_screen":    "ctrl+shift+s",
-    "hotkey_toggle_ai":         "ctrl+shift+a",
-    "hotkey_toggle_stt":        "ctrl+shift+t",
-    "model":                    "google/gemini-2.5-flash",
-    "silence_threshold":        500,
-    "vad_max_duration":         10.0,
-    "vad_silence_timeout":      1.0,
+DEFAULT_SETTINGS = {
+    "VAD_BLOCK_DURATION": 0.25,
+    "VAD_SILENCE_TIMEOUT": 1.0,
+    "VAD_MAX_DURATION": 10.0,
+    "VAD_MAX_DURATION_STT": 2.5,
+    "SILENCE_THRESHOLD": 500,
+    "SAMPLE_RATE": 16000
 }
 
-_settings: Dict[str, Any] = {}
+class SettingsManager:
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(SettingsManager, cls).__new__(cls)
+            cls._instance.settings = DEFAULT_SETTINGS.copy()
+            cls._instance.load()
+        return cls._instance
 
+    def load(self):
+        if SETTINGS_FILE.exists():
+            try:
+                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self.settings.update(data)
+            except Exception as e:
+                logger.error(f"Error loading settings: {e}")
 
-def load_settings() -> Dict[str, Any]:
-    global _settings
-    _settings = dict(DEFAULTS)
-    if SETTINGS_FILE.exists():
+    def save(self):
         try:
-            with open(SETTINGS_FILE, encoding="utf-8") as f:
-                data = json.load(f)
-            _settings.update({k: v for k, v in data.items() if k in DEFAULTS})
+            SETTINGS_FILE.parent.mkdir(exist_ok=True)
+            with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.settings, f, indent=4)
         except Exception as e:
-            logger.warning(f"No se pudo leer settings.json: {e}")
-    return _settings
+            logger.error(f"Error saving settings: {e}")
 
+    def get(self, key: str, default: Any = None) -> Any:
+        return self.settings.get(key, default)
 
-def save_settings(data: Dict[str, Any]) -> None:
-    global _settings
-    _settings.update(data)
-    try:
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(_settings, f, indent=2, ensure_ascii=False)
-        logger.info("settings.json guardado.")
-    except Exception as e:
-        logger.error(f"No se pudo guardar settings.json: {e}")
+    def set(self, key: str, value: Any):
+        self.settings[key] = value
+        self.save()
 
-
-def get(key: str, default: Any = None) -> Any:
-    if not _settings:
-        load_settings()
-    return _settings.get(key, DEFAULTS.get(key, default))
+settings_manager = SettingsManager()
