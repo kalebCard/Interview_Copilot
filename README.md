@@ -81,3 +81,11 @@ python main.py --check
 
 ## 📖 Arquitectura
 Consulta el archivo [`ARCHITECTURE.md`](ARCHITECTURE.md) para entender el sistema de Memoria a Corto Plazo, el estado del Código Persistente y el Dual-Buffer VAD.
+
+---
+
+## 📄 Licencia
+
+Este proyecto está distribuido bajo la licencia **GNU Affero General Public License v3.0 (AGPL v3)** - mira el archivo [LICENSE](LICENSE) para más detalles.
+
+Copyright (c) 2026 Kaleb Cardona
