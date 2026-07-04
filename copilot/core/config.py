@@ -46,12 +46,12 @@ GEMINI_MODEL = "google/gemini-2.5-flash"
 
 from copilot.core.settings import settings_manager
 
-VAD_BLOCK_DURATION = settings_manager.get("VAD_BLOCK_DURATION")
-VAD_SILENCE_TIMEOUT = settings_manager.get("VAD_SILENCE_TIMEOUT")
-VAD_MAX_DURATION = settings_manager.get("VAD_MAX_DURATION")
-VAD_MAX_DURATION_STT = settings_manager.get("VAD_MAX_DURATION_STT")
-SILENCE_THRESHOLD = settings_manager.get("SILENCE_THRESHOLD")
-SAMPLE_RATE = settings_manager.get("SAMPLE_RATE")
+VAD_BLOCK_DURATION = settings_manager.get("VAD_BLOCK_DURATION", 0.25)
+VAD_SILENCE_TIMEOUT = settings_manager.get("vad_silence_timeout", 1.0)
+VAD_MAX_DURATION = settings_manager.get("vad_max_duration", 10.0)
+VAD_MAX_DURATION_STT = settings_manager.get("VAD_MAX_DURATION_STT", 2.5)
+SILENCE_THRESHOLD = settings_manager.get("silence_threshold", 500)
+SAMPLE_RATE = settings_manager.get("SAMPLE_RATE", 16000)
 CONTEXT_DIR = PROJECT_ROOT / "data" / "context"
 
 def load_context() -> str:
