@@ -1,24 +1,23 @@
 # Interview Copilot
 
 > Asistente de entrevistas técnicas en tiempo real, impulsado por **OpenRouter**, **PySide6** y **Visión Artificial**.
-> Captura el audio del sistema y la pantalla, te muestra **subtítulos traducidos al instante**, un **espacio de trabajo de código persistente** y te da respuestas directas como un guion de lectura rápida, todo con memoria conversacional y baja latencia.
+> Captura el audio del sistema y la pantalla, te muestra **subtítulos en vivo**, y te da respuestas directas como un guion de lectura rápida con RAG avanzado, todo con memoria persistente y baja latencia.
 
 ---
 
 ## Características Principales
 
-1. **Inteligencia Multimodal (Visión + Audio):** Analiza lo que escuchas y lo que ves. Pulsa el botón `📷` para enviar un pantallazo silencioso a la IA cuando te muestren código o diagramas. Funciona incluso si estás en silencio total.
-2. **Espacio de Código Persistente & Memoria:** Panel de doble vista. A la derecha, la IA puede escribir, recordar y modificar código (gracias a la inyección de estado). La memoria integrada ("Sliding Window") recuerda los últimos 6 turnos de conversación para nunca perder el hilo.
-3. **Overlay HUD 100% Invisible (Stealth Mode):** La interfaz está construida con **PySide6**. Flota sobre tu pantalla con fondo semitransparente, **NO roba el foco de tu teclado** y es completamente **invisible** al compartir pantalla por Zoom o Teams.
-4. **Respuesta Rápida y Limpia:** Los subtítulos en vivo saltan cada pocos segundos. El audio de análisis se envía optimizado (corte inteligente de silencios a 1.0s y max 10.0s) a la API de OpenRouter, entregando respuestas listas para leer en voz alta sin verbosidad.
-5. **Completamente Desconectado de Google SDK:** Usa el paquete nativo de `openai` apuntando a OpenRouter para la máxima compatibilidad de modelos y menor latencia de conexión.
+1. **Sistema RAG Multidimensional:** Crea una carpeta `context/` con tu CV, Info de la Empresa y la Descripción del Trabajo. Copilot lo consumirá para darte respuestas increíblemente personalizadas a cada vacante.
+2. **Enrutador de IA Predictivo:** Clasifica cada pregunta antes de responder (Behavioral, Algoritmos, System Design) y cambia el System Prompt dinámicamente para dar la respuesta perfecta (ej. aplicando método STAR).
+3. **Integración Silenciosa con VS Code:** Lee pasivamente `.vscode_state.json` para tener conciencia en vivo del archivo de código exacto en el que tienes el cursor.
+4. **Memoria Persistente y AI Coach:** Guarda cada sesión en `interviews.db` (SQLite). Al terminar, presiona el botón "Coach" para recibir feedback analítico sobre tu claridad y ejemplos.
+5. **Detección Automática y Overlay Moderno:** Heurísticas de ruido ahorran llamadas a la API y autodetectan preguntas largas, disparando la respuesta visualmente en "tarjetas" transparentes que flotan sobre todo. No roba foco y es 100% invisible para Zoom y Teams.
 
 ---
 
 ## Estructura del proyecto
 
 ```text
-ENTREVISTAS_COPILOT/
 ├── copilot/             # Paquete principal con la lógica modular
 │   ├── __init__.py
 │   ├── config.py        # Configuración, .env, y Prompt de Memoria/Guion
