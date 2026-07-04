@@ -145,12 +145,14 @@ class AppController:
                 raise ImportError("PIL (Pillow) no está instalado.")
                 
             img = ImageGrab.grab(all_screens=True)
-            if self.image_queue.full():
-                try:
-                    self.image_queue.get_nowait()
-                except queue.Empty:
-                    pass
-            self.image_queue.put(img)
+            try:
+                self.image_queue.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self.image_queue.put_nowait(img)
+            except queue.Full:
+                pass
             self.status_update_cb("Captura enviada a Gemini", "running")
             return True
         except Exception as e:

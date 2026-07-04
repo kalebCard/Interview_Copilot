@@ -1,4 +1,5 @@
 import sqlite3
+import threading
 from pathlib import Path
 import time
 import logging
@@ -13,14 +14,16 @@ except ImportError:
 DB_PATH = PROJECT_ROOT / "data" / "interviews.db"
 
 _db_initialized = False
+_db_lock = threading.Lock()
 
 def init_db():
     global _db_initialized
-    if _db_initialized:
-        return
-    _db_initialized = True
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("""
+    with _db_lock:
+        if _db_initialized:
+            return
+        _db_initialized = True
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("""
             CREATE TABLE IF NOT EXISTS interactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT,
@@ -45,7 +48,7 @@ def add_interaction(session_id: str, question: str, answer: str, category: str =
     except sqlite3.OperationalError as e:
         logging.error(f"Error guardando interacción: {e}")
 
-def get_recent_context(session_id: str, max_tokens: int = 2000) -> List[str]:
+def get_recent_context(session_id: str, max_tokens: int = 1500) -> List[str]:
     try:
         with sqlite3.connect(DB_PATH, timeout=5) as conn:
             conn.row_factory = sqlite3.Row
@@ -62,8 +65,11 @@ def get_recent_context(session_id: str, max_tokens: int = 2000) -> List[str]:
     current_tokens: float = 0.0
     
     if tiktoken is not None:
-        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
-        def estimate_tokens(text): return len(encoding.encode(text))
+        try:
+            encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+            def estimate_tokens(text): return len(encoding.encode(text))
+        except Exception:
+            def estimate_tokens(text): return len(text.split()) * 1.3
     else:
         def estimate_tokens(text): return len(text.split()) * 1.3
         

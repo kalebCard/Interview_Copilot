@@ -26,15 +26,7 @@ from copilot.core.logger import get_logger
 logger = get_logger(__name__)
 
 def pcm_to_wav(raw_pcm: bytes, sample_rate: int, channels: int, force_mono: bool = False) -> bytes:
-    if channels > 1 and force_mono:
-        try:
-            pcm_array = array.array('h', raw_pcm)
-            mono_array = pcm_array[::channels]
-            raw_pcm = mono_array.tobytes()
-            channels = 1
-        except Exception as e:
-            logger.error(f"Error downmixing audio to mono: {e}")
-    elif channels > 2:
+    if channels > 1 and (force_mono or channels > 2):
         try:
             pcm_array = array.array('h', raw_pcm)
             mono_array = pcm_array[::channels]
@@ -50,6 +42,98 @@ def pcm_to_wav(raw_pcm: bytes, sample_rate: int, channels: int, force_mono: bool
         wf.setframerate(sample_rate)
         wf.writeframes(raw_pcm)
     return buf.getvalue()
+
+class VADProcessor:
+    def __init__(self, ai_queue, stt_queue, actual_rate, actual_channels):
+        self.ai_queue = ai_queue
+        self.stt_queue = stt_queue
+        self.actual_rate = actual_rate
+        self.actual_channels = actual_channels
+        
+        self.silence_timeout_blocks = int(VAD_SILENCE_TIMEOUT / VAD_BLOCK_DURATION)
+        self.stt_silence_timeout_blocks = int(0.7 / VAD_BLOCK_DURATION)
+        self.max_blocks_ai = int(VAD_MAX_DURATION / VAD_BLOCK_DURATION)
+        self.max_blocks_stt = int(VAD_MAX_DURATION_STT / VAD_BLOCK_DURATION)
+        
+        self.audio_buffer_ai = []
+        self.audio_buffer_stt = []
+        self.silence_blocks_count = 0
+        self.speech_active = False
+        self.stt_flushed = False
+
+    def process_frame(self, raw_pcm: bytes):
+        if len(raw_pcm) % 2 != 0:
+            raw_pcm = raw_pcm[:-1]
+            
+        pcm_array = array.array('h', raw_pcm)
+        peak_amplitude = max(abs(max(pcm_array)), abs(min(pcm_array))) if pcm_array else 0
+        
+        is_silence = peak_amplitude < SILENCE_THRESHOLD
+
+        if not is_silence:
+            if not self.speech_active:
+                logger.debug(f"Inicio de voz detectado (pico: {peak_amplitude}).")
+            self.speech_active = True
+            self.stt_flushed = False
+            self.silence_blocks_count = 0
+            self.audio_buffer_ai.append(raw_pcm)
+            self.audio_buffer_stt.append(raw_pcm)
+        else:
+            if self.speech_active:
+                self.silence_blocks_count += 1
+                self.audio_buffer_ai.append(raw_pcm)
+                if self.silence_blocks_count >= self.stt_silence_timeout_blocks and not self.stt_flushed:
+                    if self.stt_queue and self.audio_buffer_stt:
+                        wav_stt = pcm_to_wav(b"".join(self.audio_buffer_stt), self.actual_rate, self.actual_channels, force_mono=True)
+                        try:
+                            self.stt_queue.put_nowait(wav_stt)
+                        except queue.Full:
+                            logger.warning("Cola de STT llena, descartando frame de audio.")
+                    self.audio_buffer_stt = []
+                    self.stt_flushed = True
+                    
+                elif not self.stt_flushed:
+                    self.audio_buffer_stt.append(raw_pcm)
+                
+                if self.silence_blocks_count >= self.silence_timeout_blocks:
+                    if self.ai_queue and self.audio_buffer_ai:
+                        duration = len(self.audio_buffer_ai) * VAD_BLOCK_DURATION
+                        logger.debug(f"Fin de voz detectado. Enviando chunk AI de {duration:.1f}s.")
+                        wav_ai = pcm_to_wav(b"".join(self.audio_buffer_ai), self.actual_rate, self.actual_channels)
+                        try:
+                            self.ai_queue.put_nowait(wav_ai)
+                        except queue.Full:
+                            logger.warning("Cola de AI llena, descartando frame de audio.")
+                    
+                    self.audio_buffer_ai = []
+                    self.audio_buffer_stt = []
+                    self.speech_active = False
+                    self.stt_flushed = False
+                    self.silence_blocks_count = 0
+            else:
+                if not self.audio_buffer_ai:
+                    self.audio_buffer_ai = [raw_pcm]
+                    self.audio_buffer_stt = [raw_pcm]
+                
+        if len(self.audio_buffer_stt) >= self.max_blocks_stt and self.speech_active and not self.stt_flushed:
+            if self.stt_queue:
+                wav_stt = pcm_to_wav(b"".join(self.audio_buffer_stt), self.actual_rate, self.actual_channels, force_mono=True)
+                try:
+                    self.stt_queue.put_nowait(wav_stt)
+                except queue.Full:
+                    logger.warning("Cola de STT llena, descartando frame de audio.")
+            self.audio_buffer_stt = []
+            self.stt_flushed = True
+
+        if len(self.audio_buffer_ai) >= self.max_blocks_ai and self.speech_active:
+            if self.ai_queue:
+                logger.debug(f"Máxima duración alcanzada. Forzando envío AI de {VAD_MAX_DURATION}s.")
+                wav_ai = pcm_to_wav(b"".join(self.audio_buffer_ai), self.actual_rate, self.actual_channels)
+                try:
+                    self.ai_queue.put_nowait(wav_ai)
+                except queue.Full:
+                    logger.warning("Cola de AI llena, descartando frame de audio.")
+            self.audio_buffer_ai = []
 
 class AudioCapture(threading.Thread):
     def __init__(
@@ -126,16 +210,7 @@ class AudioCapture(threading.Thread):
             )
 
             frames_per_block = int(VAD_BLOCK_DURATION * actual_rate)
-            silence_timeout_blocks = int(VAD_SILENCE_TIMEOUT / VAD_BLOCK_DURATION)
-            stt_silence_timeout_blocks = int(0.7 / VAD_BLOCK_DURATION)
-            max_blocks_ai = int(VAD_MAX_DURATION / VAD_BLOCK_DURATION)
-            max_blocks_stt = int(VAD_MAX_DURATION_STT / VAD_BLOCK_DURATION)
-            
-            audio_buffer_ai: list[bytes] = []
-            audio_buffer_stt: list[bytes] = []
-            silence_blocks_count = 0
-            speech_active = False
-            stt_flushed = False
+            vad_processor = VADProcessor(self.ai_queue, self.stt_queue, actual_rate, actual_channels)
 
             while not self._stop_event.is_set():
                 collected_frames: list[bytes] = []
@@ -147,8 +222,6 @@ class AudioCapture(threading.Thread):
                         data = stream.read(to_read, exception_on_overflow=False)
                     except OSError as read_err:
                         err_str = str(read_err)
-                        # -9999: Unanticipated host error (occurs in WASAPI loopback when system is silent)
-                        # -9981: Input overflowed (occurs occasionally, can be ignored)
                         if "-9999" in err_str or "Unanticipated host error" in err_str or "-9981" in err_str:
                             data = b'\x00' * (to_read * 2 * actual_channels)
                             time.sleep(to_read / actual_rate)
@@ -162,81 +235,7 @@ class AudioCapture(threading.Thread):
                     break
                     
                 raw_pcm = b"".join(collected_frames)
-                
-                if len(raw_pcm) % 2 != 0:
-                    raw_pcm = raw_pcm[:-1]
-                
-                pcm_array = array.array('h', raw_pcm)
-                peak_amplitude = max(abs(max(pcm_array)), abs(min(pcm_array))) if pcm_array else 0
-                
-                is_silence = peak_amplitude < SILENCE_THRESHOLD
-
-                if not is_silence:
-                    if not speech_active:
-                        logger.debug(f"Inicio de voz detectado (pico: {peak_amplitude}).")
-                    speech_active = True
-                    stt_flushed = False
-                    silence_blocks_count = 0
-                    audio_buffer_ai.append(raw_pcm)
-                    audio_buffer_stt.append(raw_pcm)
-                else:
-                    if speech_active:
-                        silence_blocks_count += 1
-                        audio_buffer_ai.append(raw_pcm)
-                        if silence_blocks_count >= stt_silence_timeout_blocks and not stt_flushed:
-                            if self.stt_queue and audio_buffer_stt:
-                                wav_stt = pcm_to_wav(b"".join(audio_buffer_stt), actual_rate, actual_channels, force_mono=True)
-                                try:
-                                    self.stt_queue.put_nowait(wav_stt)
-                                except queue.Full:
-                                    logger.warning("Cola de STT llena, descartando frame de audio.")
-                            audio_buffer_stt = []
-                            stt_flushed = True
-                            
-                        elif not stt_flushed:
-                            audio_buffer_stt.append(raw_pcm)
-                        
-                        if silence_blocks_count >= silence_timeout_blocks:
-
-                            if self.ai_queue and audio_buffer_ai:
-                                duration = len(audio_buffer_ai) * VAD_BLOCK_DURATION
-                                logger.debug(f"Fin de voz detectado. Enviando chunk AI de {duration:.1f}s.")
-                                wav_ai = pcm_to_wav(b"".join(audio_buffer_ai), actual_rate, actual_channels)
-                                try:
-                                    self.ai_queue.put_nowait(wav_ai)
-                                except queue.Full:
-                                    logger.warning("Cola de AI llena, descartando frame de audio.")
-                            
-                            audio_buffer_ai = []
-                            audio_buffer_stt = []
-                            speech_active = False
-                            stt_flushed = False
-                            silence_blocks_count = 0
-                    else:
-                        # Pre-roll: keep ONLY ONE block of silence if buffer is empty
-                        if not audio_buffer_ai:
-                            audio_buffer_ai = [raw_pcm]
-                            audio_buffer_stt = [raw_pcm]
-                        
-                if len(audio_buffer_stt) >= max_blocks_stt and speech_active and not stt_flushed:
-                    if self.stt_queue:
-                        wav_stt = pcm_to_wav(b"".join(audio_buffer_stt), actual_rate, actual_channels, force_mono=True)
-                        try:
-                            self.stt_queue.put_nowait(wav_stt)
-                        except queue.Full:
-                            logger.warning("Cola de STT llena, descartando frame de audio.")
-                    audio_buffer_stt = []
-                    stt_flushed = True
-
-                if len(audio_buffer_ai) >= max_blocks_ai and speech_active:
-                    if self.ai_queue:
-                        logger.debug(f"Máxima duración alcanzada. Forzando envío AI de {VAD_MAX_DURATION}s.")
-                        wav_ai = pcm_to_wav(b"".join(audio_buffer_ai), actual_rate, actual_channels)
-                        try:
-                            self.ai_queue.put_nowait(wav_ai)
-                        except queue.Full:
-                            logger.warning("Cola de AI llena, descartando frame de audio.")
-                    audio_buffer_ai = []
+                vad_processor.process_frame(raw_pcm)
 
         except Exception as exc:
             self._notify_error(f"Error de captura de audio: {exc}")
