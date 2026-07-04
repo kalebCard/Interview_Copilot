@@ -73,8 +73,8 @@ class SettingsDialog(QDialog):
         self.setWindowTitle("Configuración - Interview Copilot")
         self.resize(450, 400)
         self.setStyleSheet(f"""
-            QDialog {{ background-color: {COLORS['bg']}; color: {COLORS['text_main']}; }}
-            QLabel {{ color: {COLORS['text_main']}; }}
+            QDialog {{ background-color: {COLORS['bg']}; color: {COLORS['text']}; }}
+            QLabel {{ color: {COLORS['text']}; }}
             QTabWidget::pane {{ border: 1px solid {COLORS['border']}; background-color: {COLORS['surface']}; }}
             QTabBar::tab {{ background-color: {COLORS['surface']}; color: {COLORS['text_dim']}; padding: 8px 16px; border: 1px solid {COLORS['border']}; }}
             QTabBar::tab:selected {{ background-color: {COLORS['accent_blue']}; color: #ffffff; }}
@@ -97,7 +97,7 @@ class SettingsDialog(QDialog):
         btn_layout.addStretch()
         
         self.btn_cancel = QPushButton("Cancelar")
-        self.btn_cancel.setStyleSheet(f"background-color: {COLORS['surface']}; color: {COLORS['text_main']}; padding: 6px 16px; border-radius: 4px;")
+        self.btn_cancel.setStyleSheet(f"background-color: {COLORS['surface']}; color: {COLORS['text']}; padding: 6px 16px; border-radius: 4px;")
         self.btn_cancel.clicked.connect(self.reject)
         
         self.btn_save = QPushButton("Guardar")
@@ -115,7 +115,7 @@ class SettingsDialog(QDialog):
         layout.setSpacing(15)
 
         self.model_combo = QComboBox()
-        self.model_combo.setStyleSheet(f"background-color: {COLORS['surface']}; color: {COLORS['text_main']}; padding: 4px; border: 1px solid {COLORS['border']}; border-radius: 4px;")
+        self.model_combo.setStyleSheet(f"background-color: {COLORS['surface']}; color: {COLORS['text']}; padding: 4px; border: 1px solid {COLORS['border']}; border-radius: 4px;")
         
         current_model = self.current_settings.get("model", settings.DEFAULTS["model"])
         idx = 0
@@ -156,7 +156,7 @@ class SettingsDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
         
-        style = f"background-color: {COLORS['surface']}; color: {COLORS['text_main']}; border: 1px solid {COLORS['border']}; padding: 4px;"
+        style = f"background-color: {COLORS['surface']}; color: {COLORS['text']}; border: 1px solid {COLORS['border']}; padding: 4px;"
 
         self.spin_silence = QSpinBox()
         self.spin_silence.setRange(100, 5000)
