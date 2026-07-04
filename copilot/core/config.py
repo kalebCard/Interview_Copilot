@@ -50,7 +50,7 @@ VAD_MAX_DURATION = 10.0
 VAD_MAX_DURATION_STT = 2.5
 SILENCE_THRESHOLD = 500
 SAMPLE_RATE = 16000
-CONTEXT_DIR = PROJECT_ROOT / "context"
+CONTEXT_DIR = PROJECT_ROOT / "data" / "context"
 
 def load_context() -> str:
     CONTEXT_DIR.mkdir(exist_ok=True)

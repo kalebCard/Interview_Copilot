@@ -21,7 +21,9 @@ def get_logger(name: str) -> logging.Logger:
         
         # Derive project root: logger.py -> core -> copilot -> project_root
         _project_root = Path(__file__).resolve().parent.parent.parent
-        log_file = _project_root / "copilot.log"
+        _data_dir = _project_root / "data"
+        _data_dir.mkdir(exist_ok=True)
+        log_file = _data_dir / "copilot.log"
         file_handler = RotatingFileHandler(
             log_file, maxBytes=5*1024*1024, backupCount=3, encoding="utf-8"
         )

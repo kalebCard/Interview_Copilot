@@ -5,7 +5,7 @@ from copilot.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-SETTINGS_FILE = PROJECT_ROOT / "settings.json"
+SETTINGS_FILE = PROJECT_ROOT / "data" / "settings.json"
 
 MODELS: List[Tuple[str, str]] = [
     ("Rapidez Extrema - Gemini 2.5 Flash",   "google/gemini-2.5-flash"),

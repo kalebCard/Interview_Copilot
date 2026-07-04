@@ -5,7 +5,7 @@ from copilot.core.config import PROJECT_ROOT
 
 logger = get_logger(__name__)
 
-VSCODE_STATE_FILE = PROJECT_ROOT / ".vscode_state.json"
+VSCODE_STATE_FILE = PROJECT_ROOT / "data" / ".vscode_state.json"
 
 def read_vscode_state() -> str:
     if not VSCODE_STATE_FILE.exists():

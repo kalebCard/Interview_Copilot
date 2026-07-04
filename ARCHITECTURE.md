@@ -12,15 +12,15 @@ Antes de llamar al modelo principal, el sistema intercepta la transcripción de 
 - **GeminiWorker (AI):** Consume `audio_queue`. Implementa una heurística inteligente para ignorar "ruido" o frases de menos de 4 palabras localmente. Analiza el audio y genera respuestas automáticamente al detectar el fin de una oración estructurada o cuando se presiona el botón, optimizando los llamados a la API.
 
 ## 3. Memoria Persistente (SQLite)
-El contexto a corto plazo se maneja con una base de datos local `interviews.db` a través de `core/memory.py`. 
+El contexto a corto plazo se maneja con una base de datos local `data/interviews.db` a través de `core/memory.py`. 
 - Todas las interacciones se guardan con timestamp, categoría, pregunta y respuesta.
 - El Worker lee el historial reciente limitando a ~2000 tokens antes de generar la siguiente respuesta para tener total conciencia contextual.
 
 ## 4. Contexto de Código (Integración VS Code)
-Para el contexto de programación, el sistema lee de manera pasiva y autónoma un archivo local `.vscode_state.json` (creado mediante una extensión local o un watcher). Esto prioriza y sincroniza la vista del Copilot con exactamente el mismo archivo o fragmento que estés mirando en VS Code.
+Para el contexto de programación, el sistema lee de manera pasiva y autónoma un archivo local `data/.vscode_state.json` (creado mediante una extensión local o un watcher). Esto prioriza y sincroniza la vista del Copilot con exactamente el mismo archivo o fragmento que estés mirando en VS Code.
 
 ## 5. RAG y Contexto Multidimensional
-El sistema (`core/config.py`) consolida todos los documentos `.md` dentro de la carpeta `context/` (por ejemplo, tu CV en `resume.md`, información de la empresa, notas personales) y los empaqueta estructuradamente como contexto nativo en cada respuesta. Las llamadas a las APIs están centralizadas en `core/llm_client.py`.
+El sistema (`core/config.py`) consolida todos los documentos `.md` dentro de la carpeta `data/context/` (por ejemplo, tu CV en `resume.md`, información de la empresa, notas personales) y los empaqueta estructuradamente como contexto nativo en cada respuesta. Las llamadas a las APIs están centralizadas en `core/llm_client.py`.
 
 ## 6. Interfaz: Modern Overlay en PySide6
 - Reestructurado para mostrar "tarjetas" translúcidas y flotantes mediante HTML y CSS renderizados en Qt.

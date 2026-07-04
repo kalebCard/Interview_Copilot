@@ -4,7 +4,7 @@ import time
 from typing import List, Tuple
 from copilot.core.config import PROJECT_ROOT
 
-DB_PATH = PROJECT_ROOT / "interviews.db"
+DB_PATH = PROJECT_ROOT / "data" / "interviews.db"
 
 _db_initialized = False
 

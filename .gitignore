@@ -9,14 +9,16 @@ __pycache__/
 # Variables de Entorno y Claves
 .env
 
-# Base de datos y logs
-interviews.db
-copilot.log
-*.log
+# Base de datos y logs (ahora en data/)
+data/interviews.db
+data/copilot.log
+data/*.log
+data/settings.json
+data/.vscode_state.json
 
 # Contexto y archivos personales
-context/*.md
-!context/.gitkeep
+data/context/*.md
+!data/context/.gitkeep
 
 # IDEs
 .vscode/
