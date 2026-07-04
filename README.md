@@ -71,8 +71,9 @@ python main.py --check
 
 ### Controles
 - **Arrastrar:** Haz clic y arrastra desde la barra superior.
+- **Selector de Modelo:** Escoge en tiempo real entre distintos niveles de inteligencia (Gemini Flash/Pro, Claude Sonnet/Opus).
+- **Gemini AI / Iniciar IA:** Enciende el motor de análisis profundo.
 - **Subtítulos:** Enciende el motor rápido de transcripción.
-- **Gemini AI:** Enciende el motor de análisis profundo.
 - **(Cámara):** Captura tu pantalla al instante. Ideal si el entrevistador te pide resolver un algoritmo visualmente.
 - **Ctrl + Shift + H:** Oculta/Muestra el panel completo sin perder foco.
 

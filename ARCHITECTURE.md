@@ -20,8 +20,8 @@ MIC / WASAPI ────> AudioCapture (Thread)
 TranscriptionWorker (STT)          GeminiWorker (AI)
 ```
 
-- **TranscriptionWorker:** Consume `stt_queue`. Al ser fragmentos muy cortos, permite que los subtítulos fluyan rápidamente por la pantalla (STT + Deep Translator).
-- **GeminiWorker:** Consume `audio_queue`. Recientemente optimizado para cortar cuando detecta `1.0s` de silencio o un máximo de `10.0s` de habla continua. Esto asegura que la IA procese y responda rápidamente a preguntas completas sin ahogarse de contexto.
+- **TranscriptionWorker:** Consume `stt_queue`. Al ser fragmentos muy cortos, permite que los subtítulos fluyan rápidamente por la pantalla (STT + Deep Translator sin filtros agresivos destructivos).
+- **GeminiWorker (AI):** Consume `audio_queue`. Recientemente optimizado para cortar cuando detecta `1.0s` de silencio o un máximo de `10.0s` de habla continua. Mantiene la continuidad de los buffers históricos durante las transiciones para evitar pérdida de palabras.
 
 ---
 
@@ -29,7 +29,7 @@ TranscriptionWorker (STT)          GeminiWorker (AI)
 
 Dado que `GeminiWorker` procesa fragmentos de audio de forma aislada, se implementó un búfer circular en memoria para otorgarle contexto histórico sin exceder los límites de tokens ni sacrificar velocidad.
 
-- El **Worker mantiene un estado** (`self.memory_buffer`) que almacena las últimas 6 respuestas emitidas por el modelo.
+- El **Worker mantiene un estado** (`self.memory_buffer`) que almacena el historial de conversación dinámicamente limitándolo a un máximo de ~2000 tokens estimados, optimizando la cantidad de turnos recordados según la longitud de las respuestas.
 - Como el modelo genera una estructura `[ESPAÑOL] (resumen de la pregunta) + [INGLÉS] (respuesta danda)`, el búfer funciona como un registro cronológico perfecto del estado de la entrevista.
 - Este historial se inyecta dinámicamente bajo el bloque `PAST CONVERSATION CONTEXT` antes de enviar el prompt a la API de OpenRouter.
 
@@ -40,8 +40,8 @@ Dado que `GeminiWorker` procesa fragmentos de audio de forma aislada, se impleme
 Para entrevistas técnicas, la interfaz ahora cuenta con un `QSplitter` que separa el guion de chat de un **Editor de Código Persistente** en el panel derecho.
 
 1. La interfaz extrae automáticamente bloques etiquetados como `[CÓDIGO]...[/CÓDIGO]` provenientes de la IA y actualiza el panel derecho (`self.code_area`).
-2. La interfaz mantiene un estado thread-safe del código (`self.current_code_state`).
-3. `GeminiWorker` solicita este código actual vía `callback` justo antes de hacer una petición y lo inyecta en el prompt como `CURRENT WORKSPACE CODE STATE`.
+2. La interfaz mantiene un estado seguro del código (`self.current_code_state`) protegido con un `threading.Lock()` para prevenir "race conditions".
+3. El Worker solicita este código actual de forma segura vía `callback` justo antes de hacer una petición y lo inyecta en el prompt como `CURRENT WORKSPACE CODE STATE`.
 4. Esto permite a la IA modificar, arreglar o continuar programando sobre el mismo fragmento de código sin tener "amnesia" del estado previo.
 
 ---
