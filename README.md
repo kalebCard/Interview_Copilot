@@ -17,25 +17,6 @@
 
 ## Estructura del proyecto
 
-```text
-├── copilot/             # Paquete principal con la lógica modular
-│   ├── __init__.py
-│   ├── config.py        # Configuración, .env, y Prompt de Memoria/Guion
-│   ├── audio.py         # Dual Buffer, WASAPI loopback y VAD (Optimizados a 1s)
-│   ├── translator.py    # STT de baja latencia (Subtítulos)
-│   ├── worker.py        # Procesamiento OpenRouter, Memoria FIFO y Estado
-│   ├── check.py         # Validación del entorno CLI
-│   └── ui.py            # Interfaz gráfica (PySide6, QSplitter, Signals/Slots, QSS)
-├── main.py              # Puerta de entrada en consola
-├── LanzarCopilot.vbs    # Ejecutable invisible que lanza la App sin terminal
-├── hoja_de_vida.md      # Tu CV — se inyecta como contexto base
-├── requirements.txt     # Dependencias Python
-└── ARCHITECTURE.md      # Detalles profundos del diseño interno
-```
-
----
-
-## Requisitos y Dependencias
 
 - **Python 3.10+** (Windows 10/11 requerido para WASAPI Loopback).
 - API Key de OpenRouter → [Obtenerla aquí](https://openrouter.ai/). (Se configura en el `.env` como `OPENROUTER_API_KEY`).
