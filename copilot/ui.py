@@ -170,13 +170,6 @@ class CopilotApp(QMainWindow):
 
         self._spinner_idx = 0
         
-    def _get_code_state_safe(self):
-        with self.code_state_lock:
-            return self.current_code_state
-
-    def _set_code_state_safe(self, code):
-        with self.code_state_lock:
-            self.current_code_state = code
         self.spinner_timer = QTimer(self)
         self.spinner_timer.timeout.connect(self._tick_spinner)
 
@@ -208,6 +201,14 @@ class CopilotApp(QMainWindow):
 
         self._configure_window()
         self._build_ui()
+
+    def _get_code_state_safe(self):
+        with self.code_state_lock:
+            return self.current_code_state
+
+    def _set_code_state_safe(self, code):
+        with self.code_state_lock:
+            self.current_code_state = code
 
     def _configure_window(self):
         self.setWindowTitle("Interview Copilot")
