@@ -1,13 +1,9 @@
 import json
-from pathlib import Path
 from typing import Dict, Any, List, Tuple
 from copilot.core.logger import get_logger
+from copilot.core.paths import SETTINGS_FILE
 
 logger = get_logger(__name__)
-
-# To prevent circular import with config.py, compute data path directly
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-SETTINGS_FILE = PROJECT_ROOT / "data" / "settings.json"
 
 MODELS: List[Tuple[str, str]] = [
     ("Rapidez Extrema - Gemini 2.5 Flash",   "google/gemini-2.5-flash"),
@@ -25,12 +21,10 @@ DEFAULTS: Dict[str, Any] = {
     "silence_threshold":        500,
     "vad_max_duration":         10.0,
     "vad_silence_timeout":      1.0,
-    "VAD_BLOCK_DURATION": 0.25,
-    "VAD_MAX_DURATION_STT": 2.5,
-    "SAMPLE_RATE": 16000
+    "vad_block_duration":       0.25,
+    "vad_max_duration_stt":     2.5,
+    "sample_rate":              16000,
 }
-
-DEFAULT_SETTINGS = DEFAULTS
 
 class SettingsManager:
     _instance = None
@@ -38,7 +32,7 @@ class SettingsManager:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(SettingsManager, cls).__new__(cls)
-            cls._instance.settings = DEFAULT_SETTINGS.copy()
+            cls._instance.settings = DEFAULTS.copy()
             cls._instance.load()
         return cls._instance
 
@@ -60,7 +54,7 @@ class SettingsManager:
             logger.error(f"Error saving settings: {e}")
 
     def get(self, key: str, default: Any = None) -> Any:
-        return self.settings.get(key, default)
+        return self.settings.get(key, DEFAULTS.get(key, default))
 
     def set(self, key: str, value: Any):
         self.settings[key] = value
@@ -76,5 +70,3 @@ def save_settings(data: Dict[str, Any]) -> None:
     settings_manager.settings.update(data)
     settings_manager.save()
 
-def get(key: str, default: Any = None) -> Any:
-    return settings_manager.get(key, DEFAULTS.get(key, default))

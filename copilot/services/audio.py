@@ -14,12 +14,12 @@ except ImportError:
     pyaudio = None
 
 from copilot.core.config import (
-    VAD_BLOCK_DURATION,
-    VAD_SILENCE_TIMEOUT,
-    VAD_MAX_DURATION,
-    VAD_MAX_DURATION_STT,
-    SILENCE_THRESHOLD,
-    SAMPLE_RATE,
+    get_vad_block_duration,
+    get_vad_silence_timeout,
+    get_vad_max_duration,
+    get_vad_max_duration_stt,
+    get_silence_threshold,
+    get_sample_rate,
 )
 from copilot.core.logger import get_logger
 
@@ -50,10 +50,15 @@ class VADProcessor:
         self.actual_rate = actual_rate
         self.actual_channels = actual_channels
         
-        self.silence_timeout_blocks = int(VAD_SILENCE_TIMEOUT / VAD_BLOCK_DURATION)
-        self.stt_silence_timeout_blocks = int(0.7 / VAD_BLOCK_DURATION)
-        self.max_blocks_ai = int(VAD_MAX_DURATION / VAD_BLOCK_DURATION)
-        self.max_blocks_stt = int(VAD_MAX_DURATION_STT / VAD_BLOCK_DURATION)
+        # Read settings at construction time so a new VADProcessor
+        # picks up any changes made through the Settings dialog.
+        block_dur = get_vad_block_duration()
+        self.block_duration = block_dur
+        self.silence_threshold = get_silence_threshold()
+        self.silence_timeout_blocks = int(get_vad_silence_timeout() / block_dur)
+        self.stt_silence_timeout_blocks = int(0.7 / block_dur)
+        self.max_blocks_ai = int(get_vad_max_duration() / block_dur)
+        self.max_blocks_stt = int(get_vad_max_duration_stt() / block_dur)
         
         self.audio_buffer_ai = []
         self.audio_buffer_stt = []
@@ -68,7 +73,7 @@ class VADProcessor:
         pcm_array = array.array('h', raw_pcm)
         peak_amplitude = max(abs(max(pcm_array)), abs(min(pcm_array))) if pcm_array else 0
         
-        is_silence = peak_amplitude < SILENCE_THRESHOLD
+        is_silence = peak_amplitude < self.silence_threshold
 
         if not is_silence:
             if not self.speech_active:
@@ -97,7 +102,7 @@ class VADProcessor:
                 
                 if self.silence_blocks_count >= self.silence_timeout_blocks:
                     if self.ai_queue and self.audio_buffer_ai:
-                        duration = len(self.audio_buffer_ai) * VAD_BLOCK_DURATION
+                        duration = len(self.audio_buffer_ai) * self.block_duration
                         logger.debug(f"Fin de voz detectado. Enviando chunk AI de {duration:.1f}s.")
                         wav_ai = pcm_to_wav(b"".join(self.audio_buffer_ai), self.actual_rate, self.actual_channels)
                         try:
@@ -127,7 +132,7 @@ class VADProcessor:
 
         if len(self.audio_buffer_ai) >= self.max_blocks_ai and self.speech_active:
             if self.ai_queue:
-                logger.debug(f"Máxima duración alcanzada. Forzando envío AI de {VAD_MAX_DURATION}s.")
+                logger.debug(f"Máxima duración alcanzada. Forzando envío AI de {get_vad_max_duration()}s.")
                 wav_ai = pcm_to_wav(b"".join(self.audio_buffer_ai), self.actual_rate, self.actual_channels)
                 try:
                     self.ai_queue.put_nowait(wav_ai)
@@ -190,7 +195,7 @@ class AudioCapture(threading.Thread):
                     self._notify_status("Usando micrófono (WASAPI loopback no disponible)")
 
             dev_info        = pa.get_device_info_by_index(device_idx)
-            actual_rate     = int(dev_info.get("defaultSampleRate", SAMPLE_RATE))
+            actual_rate     = int(dev_info.get("defaultSampleRate", get_sample_rate()))
             max_channels    = int(dev_info.get("maxInputChannels") or 0)
             actual_channels = max_channels if max_channels > 0 else 1
 
@@ -209,7 +214,7 @@ class AudioCapture(threading.Thread):
                 f"Capturando — {actual_rate}Hz / {actual_channels}ch / {mode_label}"
             )
 
-            frames_per_block = int(VAD_BLOCK_DURATION * actual_rate)
+            frames_per_block = int(get_vad_block_duration() * actual_rate)
             vad_processor = VADProcessor(self.ai_queue, self.stt_queue, actual_rate, actual_channels)
 
             while not self._stop_event.is_set():

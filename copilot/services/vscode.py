@@ -1,11 +1,26 @@
 import json
-from pathlib import Path
 from copilot.core.logger import get_logger
-from copilot.core.config import PROJECT_ROOT
+from copilot.core.paths import PROJECT_ROOT
 
 logger = get_logger(__name__)
 
 VSCODE_STATE_FILE = PROJECT_ROOT / "data" / ".vscode_state.json"
+
+# Markers used in the system prompt that must be sanitized in user-provided content
+# to prevent prompt injection via code files open in VS Code.
+_PROMPT_MARKERS = {
+    "[CÓDIGO]":   "[ C Ó D I G O ]",
+    "[/CÓDIGO]":  "[ / C Ó D I G O ]",
+    "[ESPAÑOL]:": "[ E S P A Ñ O L ]:",
+    "[INGLÉS]:":  "[ I N G L É S ]:",
+    "IGNORE_CHUNK": "I G N O R E _ C H U N K",
+}
+
+def _sanitize_content(text: str) -> str:
+    """Neutralize system-prompt markers in user-provided content."""
+    for marker, replacement in _PROMPT_MARKERS.items():
+        text = text.replace(marker, replacement)
+    return text
 
 def read_vscode_state() -> str:
     if not VSCODE_STATE_FILE.exists():
@@ -24,13 +39,11 @@ def read_vscode_state() -> str:
             if len(full_content) > 20000:
                 full_content = full_content[:20000] + "\n...[TRUNCATED]"
             
-            # Basic prompt injection protection
-            full_content = full_content.replace("[/CÓDIGO]", "[ C Ó D I G O ]")
-            full_content = full_content.replace("[INGLÉS]", "[ I N G L É S ]")
+            full_content = _sanitize_content(full_content)
             
             result = f"// File: {file_name}\n"
             if selected_text:
-                result += f"// [User is currently highlighting this section]:\n{selected_text}\n"
+                result += f"// [User is currently highlighting this section]:\n{_sanitize_content(selected_text)}\n"
             else:
                 result += f"{full_content}\n"
                 

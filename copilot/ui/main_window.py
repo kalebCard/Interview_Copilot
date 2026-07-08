@@ -1,6 +1,7 @@
 import sys
 import os
 import signal
+import html
 import queue
 import re
 import ctypes
@@ -16,7 +17,7 @@ from copilot.core.logger import get_logger
 from copilot.ui.theme import COLORS, MAIN_STYLE
 from copilot.ui.title_bar import TitleBar
 from copilot.core.app_controller import AppController
-from copilot.core import settings
+from copilot.core.settings import settings_manager, load_settings, save_settings, DEFAULTS, MODELS
 from copilot.ui.settings_dialog import SettingsDialog
 
 logger = get_logger(__name__)
@@ -65,7 +66,7 @@ class CopilotApp(QMainWindow):
         self.subtitle_idle_timer.setSingleShot(True)
         self.subtitle_idle_timer.timeout.connect(self._clear_subtitle)
 
-        settings.load_settings()
+        load_settings()
         self._register_hotkeys()
 
         self._configure_window()
@@ -82,10 +83,10 @@ class CopilotApp(QMainWindow):
                 try: keyboard.add_hotkey(key_str, callback)
                 except Exception as e: logger.warning(f"Error registrando atajo {key_str}: {e}")
 
-        safe_add(settings.get("hotkey_toggle_visibility"), lambda: self.signals.toggle_visibility.emit())
-        safe_add(settings.get("hotkey_toggle_ai"), self._toggle_ai)
-        safe_add(settings.get("hotkey_toggle_stt"), self._toggle_stt)
-        safe_add(settings.get("hotkey_capture_screen"), self._capture_screen)
+        safe_add(settings_manager.get("hotkey_toggle_visibility"), lambda: self.signals.toggle_visibility.emit())
+        safe_add(settings_manager.get("hotkey_toggle_ai"), self._toggle_ai)
+        safe_add(settings_manager.get("hotkey_toggle_stt"), self._toggle_stt)
+        safe_add(settings_manager.get("hotkey_capture_screen"), self._capture_screen)
 
     def _configure_window(self):
         self.setWindowTitle("Interview Copilot")
@@ -327,10 +328,11 @@ class CopilotApp(QMainWindow):
             self._set_btn_style(self.btn_ai, False)
         else:
             api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-            self.controller.start_ai(api_key, settings.get("model"), None)
-            self.btn_ai.setText("■ Stop Gemini")
-            self._set_btn_style(self.btn_ai, True)
-            self.spinner_timer.start(250)
+            started = self.controller.start_ai(api_key, settings_manager.get("model"), None)
+            if started:
+                self.btn_ai.setText("■ Stop Gemini")
+                self._set_btn_style(self.btn_ai, True)
+                self.spinner_timer.start(250)
 
     def _capture_screen(self):
         self.hide()
@@ -338,8 +340,10 @@ class CopilotApp(QMainWindow):
         QTimer.singleShot(100, self._do_capture_and_show)
 
     def _do_capture_and_show(self):
-        self.controller.capture_screen()
-        self.show()
+        try:
+            self.controller.capture_screen()
+        finally:
+            self.show()
 
     def _display_response(self, text: str):
         self._set_status("Respuesta generada", "idle")
@@ -353,7 +357,9 @@ class CopilotApp(QMainWindow):
             # Remove the code block from the display text
             text = re.sub(r'\[CÓDIGO\].*?\[/CÓDIGO\]', '', text, flags=re.DOTALL).strip()
         
-        html_body = text.replace('\n', '<br>')
+        # Escape HTML from LLM output to prevent injection, then add line breaks
+        text_escaped = html.escape(text)
+        html_body = text_escaped.replace('\n', '<br>')
         
         pregunta_match = re.search(r'\[ESPAÑOL\]:(.*?)(?=\[INGLÉS\]|$)', html_body, flags=re.IGNORECASE | re.DOTALL)
         pregunta_texto = pregunta_match.group(1).strip() if pregunta_match else "(Contexto deducido)"
@@ -386,8 +392,8 @@ class CopilotApp(QMainWindow):
         self.text_area.append(html)
 
     def _show_startup_message(self):
-        selected_model = settings.get("model")
-        hk_vis = settings.get("hotkey_toggle_visibility", "ctrl+shift+h")
+        selected_model = settings_manager.get("model")
+        hk_vis = settings_manager.get("hotkey_toggle_visibility", "ctrl+shift+h")
         
         msg = f"""
         <div style="color: {COLORS['accent_blue']};">
@@ -397,8 +403,8 @@ class CopilotApp(QMainWindow):
             <i>Atajos habilitados. Ocultar/mostrar UI: <b>{hk_vis}</b></i>
         </div>
         """
-        if "WARNING" in self.controller.context_content:
-            msg += f"<div style='color: {COLORS['accent_red']};'><br>{self.controller.context_content}</div>"
+        if not self.controller.has_context:
+            msg += f"<div style='color: {COLORS['accent_red']};'><br>⚠️ No se encontró contexto. Crea archivos .md en data/context/ para personalizar respuestas.</div>"
         
         self.text_area.setHtml(msg)
 

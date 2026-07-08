@@ -1,14 +1,22 @@
 from copilot.core.memory import get_session_history
 from copilot.core.logger import get_logger
 from copilot.core.llm_client import LLMClient
+from copilot.core.settings import settings_manager
 
 logger = get_logger(__name__)
+
+# Maximum interactions to include in a coach report to avoid exceeding model context limits.
+_MAX_COACH_INTERACTIONS = 50
 
 def generate_coach_report(session_id: str = "default_session") -> str:
     history = get_session_history(session_id)
     if not history:
         return "No hay suficientes datos en la sesión para generar un reporte."
-        
+    
+    # Truncate to last N interactions to stay within context window
+    if len(history) > _MAX_COACH_INTERACTIONS:
+        history = history[-_MAX_COACH_INTERACTIONS:]
+    
     transcript = ""
     for ts, cat, q, a in history:
         transcript += f"Categoría: {cat}\nQ: {q}\nA: {a}\n\n"
@@ -26,12 +34,14 @@ TRANSCRIPCIÓN:
 """
     
     try:
+        model = settings_manager.get("model", "google/gemini-2.5-flash")
         client = LLMClient()
         resp = client.generate_chat(
-            model="google/gemini-2.5-flash",
+            model=model,
             messages=[{"role": "user", "content": prompt}]
         )
         return resp.choices[0].message.content
     except Exception as e:
         logger.error(f"Error generando reporte de coach: {e}")
         return "Error al generar el reporte del Coach."
+

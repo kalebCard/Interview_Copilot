@@ -1,7 +1,9 @@
 import logging
+import os
 import sys
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
+
+from copilot.core.paths import DATA_DIR, LOG_FILE
 
 def get_logger(name: str) -> logging.Logger:
 
@@ -15,7 +17,6 @@ def get_logger(name: str) -> logging.Logger:
             datefmt="%Y-%m-%d %H:%M:%S"
         )
         
-        import os
         log_level_str = os.environ.get("LOG_LEVEL", "INFO").upper()
         log_level = getattr(logging, log_level_str, logging.INFO)
         
@@ -23,13 +24,9 @@ def get_logger(name: str) -> logging.Logger:
         console_handler.setLevel(log_level)
         console_handler.setFormatter(fmt)
         
-        # Derive project root: logger.py -> core -> copilot -> project_root
-        _project_root = Path(__file__).resolve().parent.parent.parent
-        _data_dir = _project_root / "data"
-        _data_dir.mkdir(exist_ok=True)
-        log_file = _data_dir / "copilot.log"
+        DATA_DIR.mkdir(exist_ok=True)
         file_handler = RotatingFileHandler(
-            log_file, maxBytes=5*1024*1024, backupCount=3, encoding="utf-8"
+            LOG_FILE, maxBytes=5*1024*1024, backupCount=3, encoding="utf-8"
         )
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(fmt)

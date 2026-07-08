@@ -1,7 +1,8 @@
 
 import os
 
-from copilot.core.config import load_context, CONTEXT_DIR, _load_dotenv
+from copilot.core.config import load_context, _load_dotenv
+from copilot.core.paths import CONTEXT_DIR
 
 def run_check() -> None:
     print("\n===========================================")
@@ -12,7 +13,7 @@ def run_check() -> None:
     all_ok = True
 
     context_str = load_context()
-    if "WARNING" in context_str:
+    if context_str is None:
         print(f"  [WARN]  Contexto no encontrado en la carpeta {CONTEXT_DIR}")
         all_ok = False
     else:

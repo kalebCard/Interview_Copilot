@@ -1,14 +1,13 @@
 import sqlite3
 import threading
-from pathlib import Path
 import time
-import logging
 from typing import List, Tuple
-from copilot.core.config import PROJECT_ROOT
+from copilot.core.paths import DB_PATH
+from copilot.core.logger import get_logger
 
 import tiktoken
 
-DB_PATH = PROJECT_ROOT / "data" / "interviews.db"
+logger = get_logger(__name__)
 
 _db_initialized = False
 _db_lock = threading.Lock()
@@ -38,19 +37,17 @@ def init_db():
 def add_interaction(session_id: str, question: str, answer: str, category: str = "general"):
     try:
         with sqlite3.connect(DB_PATH) as conn:
-            conn.execute("PRAGMA journal_mode=WAL")
             conn.execute(
                 "INSERT INTO interactions (session_id, timestamp, category, question, answer) VALUES (?, ?, ?, ?, ?)",
                 (session_id, time.time(), category, question, answer)
             )
             conn.commit()
     except sqlite3.OperationalError as e:
-        logging.error(f"Error guardando interacción: {e}")
+        logger.error(f"Error guardando interacción: {e}")
 
 def get_recent_context(session_id: str, max_tokens: int = 1500) -> List[str]:
     try:
         with sqlite3.connect(DB_PATH, timeout=5) as conn:
-            conn.execute("PRAGMA journal_mode=WAL")
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT question, answer FROM interactions WHERE session_id = ? ORDER BY timestamp ASC LIMIT 100",
@@ -58,7 +55,7 @@ def get_recent_context(session_id: str, max_tokens: int = 1500) -> List[str]:
             )
             rows = cursor.fetchall()
     except sqlite3.OperationalError as e:
-        logging.error(f"Error al leer contexto: {e}")
+        logger.error(f"Error al leer contexto: {e}")
         return []
         
     context: List[str] = []
@@ -83,7 +80,6 @@ def get_recent_context(session_id: str, max_tokens: int = 1500) -> List[str]:
 
 def get_session_history(session_id: str) -> List[Tuple]:
     with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("PRAGMA journal_mode=WAL")
         cursor = conn.execute(
             "SELECT timestamp, category, question, answer FROM interactions WHERE session_id = ? ORDER BY timestamp ASC",
             (session_id,)
@@ -92,3 +88,4 @@ def get_session_history(session_id: str) -> List[Tuple]:
 
 # Initialize upon import
 init_db()
+

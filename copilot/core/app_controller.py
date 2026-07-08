@@ -16,6 +16,15 @@ except ImportError:
 
 logger = get_logger(__name__)
 
+# Default session identifier — extracted to avoid hardcoding in multiple places.
+DEFAULT_SESSION_ID = "default_session"
+
+# Fallback message when no context files are found.
+_NO_CONTEXT_MSG = (
+    "No se encontró contexto. Crea archivos .md en la carpeta 'data/context/' "
+    "para personalizar las respuestas de la IA."
+)
+
 class AppController:
     def __init__(
         self,
@@ -40,13 +49,25 @@ class AppController:
         self.transcription_thread: Optional[TranscriptionWorker] = None
         self.audio_thread_lock = threading.Lock()
         
-        self.is_running_stt = False
-        self.is_running_ai = False
+        # Thread-safe state flags using Events.
+        self._ai_running = threading.Event()
+        self._stt_running = threading.Event()
         
         self.current_code_state = ""
         self.code_state_lock = threading.Lock()
         
-        self.context_content = load_context()
+        context = load_context()
+        self.context_content = context if context is not None else _NO_CONTEXT_MSG
+        self.has_context = context is not None
+
+    # -- Properties for backward compatibility with UI reads --
+    @property
+    def is_running_ai(self) -> bool:
+        return self._ai_running.is_set()
+    
+    @property
+    def is_running_stt(self) -> bool:
+        return self._stt_running.is_set()
 
     def get_code_state_safe(self) -> str:
         vscode_state = read_vscode_state()
@@ -60,17 +81,18 @@ class AppController:
             self.current_code_state = code
 
     def ensure_audio_capture(self, device_idx: Optional[int]):
-        if self.audio_thread is not None and self.audio_thread.is_alive():
-            return
-            
-        self.audio_thread = AudioCapture(
-            ai_queue=self.audio_queue,
-            stt_queue=self.stt_queue,
-            device_index=device_idx,
-            status_callback=lambda msg: self.status_update_cb(msg, "running"),
-            error_callback=self.gemini_error_cb
-        )
-        self.audio_thread.start()
+        with self.audio_thread_lock:
+            if self.audio_thread is not None and self.audio_thread.is_alive():
+                return
+                
+            self.audio_thread = AudioCapture(
+                ai_queue=self.audio_queue,
+                stt_queue=self.stt_queue,
+                device_index=device_idx,
+                status_callback=lambda msg: self.status_update_cb(msg, "running"),
+                error_callback=self.gemini_error_cb
+            )
+            self.audio_thread.start()
 
     def check_audio_capture_stop(self):
         if not self.is_running_ai and not self.is_running_stt:
@@ -83,7 +105,7 @@ class AppController:
 
     def start_stt(self, device_idx: Optional[int]):
         self.ensure_audio_capture(device_idx)
-        self.is_running_stt = True
+        self._stt_running.set()
 
         self.transcription_thread = TranscriptionWorker(
             stt_queue=self.stt_queue,
@@ -93,20 +115,21 @@ class AppController:
         self.transcription_thread.start()
 
     def stop_stt(self):
-        self.is_running_stt = False
+        self._stt_running.clear()
         if self.transcription_thread:
             self.transcription_thread.stop()
             self.transcription_thread.join(timeout=2)
             self.transcription_thread = None
         self.check_audio_capture_stop()
 
-    def start_ai(self, api_key: str, model_name: str, device_idx: Optional[int]):
+    def start_ai(self, api_key: str, model_name: str, device_idx: Optional[int]) -> bool:
+        """Start the AI worker. Returns True on success, False on validation failure."""
         if not api_key:
             self.gemini_error_cb("No se encontró OPENROUTER_API_KEY en .env")
-            return
+            return False
 
         self.ensure_audio_capture(device_idx)
-        self.is_running_ai = True
+        self._ai_running.set()
 
         self.gemini_thread = GeminiWorker(
             audio_queue=self.audio_queue,
@@ -120,9 +143,10 @@ class AppController:
             chunk_callback=None
         )
         self.gemini_thread.start()
+        return True
 
     def stop_ai(self):
-        self.is_running_ai = False
+        self._ai_running.clear()
         if self.gemini_thread:
             self.gemini_thread.stop()
             self.gemini_thread.join(timeout=2)
@@ -151,16 +175,18 @@ class AppController:
                 pass
             try:
                 self.image_queue.put_nowait(img)
+                self.status_update_cb("Captura enviada a Gemini", "running")
+                return True
             except queue.Full:
-                pass
-            self.status_update_cb("Captura enviada a Gemini", "running")
-            return True
+                self.status_update_cb("Cola de imágenes llena, reintenta", "error")
+                return False
         except Exception as e:
             self.gemini_error_cb(f"Error al capturar: {e}")
             return False
 
     def run_coach(self, report_cb: Callable[[str], None]):
         def run():
-            report = generate_coach_report("default_session")
+            report = generate_coach_report(DEFAULT_SESSION_ID)
             report_cb(report)
         threading.Thread(target=run, daemon=True).start()
+

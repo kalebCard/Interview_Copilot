@@ -1,12 +1,11 @@
 
 import os
 from pathlib import Path
+from typing import Optional
 from copilot.core.logger import get_logger
+from copilot.core.paths import PROJECT_ROOT, CONTEXT_DIR
 
 logger = get_logger(__name__)
-
-# Derive project root from this file's location: core/config.py -> core -> copilot -> project_root
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 _dotenv_loaded = False
 
@@ -46,15 +45,34 @@ GEMINI_MODEL = "google/gemini-2.5-flash"
 
 from copilot.core.settings import settings_manager
 
-VAD_BLOCK_DURATION = settings_manager.get("VAD_BLOCK_DURATION", 0.25)
-VAD_SILENCE_TIMEOUT = settings_manager.get("vad_silence_timeout", 1.0)
-VAD_MAX_DURATION = settings_manager.get("vad_max_duration", 10.0)
-VAD_MAX_DURATION_STT = settings_manager.get("VAD_MAX_DURATION_STT", 2.5)
-SILENCE_THRESHOLD = settings_manager.get("silence_threshold", 500)
-SAMPLE_RATE = settings_manager.get("SAMPLE_RATE", 16000)
-CONTEXT_DIR = PROJECT_ROOT / "data" / "context"
+# ---------------------------------------------------------------------------
+# Reactive getters — read live from settings_manager so that changes made
+# through the Settings dialog take effect without restarting the app.
+# ---------------------------------------------------------------------------
+def get_vad_block_duration() -> float:
+    return float(settings_manager.get("vad_block_duration", 0.25))
 
-def load_context() -> str:
+def get_vad_silence_timeout() -> float:
+    return float(settings_manager.get("vad_silence_timeout", 1.0))
+
+def get_vad_max_duration() -> float:
+    return float(settings_manager.get("vad_max_duration", 10.0))
+
+def get_vad_max_duration_stt() -> float:
+    return float(settings_manager.get("vad_max_duration_stt", 2.5))
+
+def get_silence_threshold() -> int:
+    return int(settings_manager.get("silence_threshold", 500))
+
+def get_sample_rate() -> int:
+    return int(settings_manager.get("sample_rate", 16000))
+
+
+def load_context() -> Optional[str]:
+    """Load all .md files from the context directory.
+    
+    Returns the combined context string, or None if no context files were found.
+    """
     CONTEXT_DIR.mkdir(exist_ok=True)
     
     content_blocks = []
@@ -68,12 +86,11 @@ def load_context() -> str:
             logger.warning(f"No se pudo cargar {md_file.name}: {e}")
             
     if not content_blocks:
-        warning = (
-            "[WARNING: No se encontró contexto. Crea archivos .md en la carpeta 'context/' "
-            "para personalizar las respuestas de la IA.]"
+        logger.warning(
+            "No se encontró contexto. Crea archivos .md en la carpeta 'context/' "
+            "para personalizar las respuestas de la IA."
         )
-        logger.warning(warning)
-        return warning
+        return None
         
     return "\n\n".join(content_blocks)
 
@@ -131,3 +148,4 @@ You will receive a "PAST CONVERSATION CONTEXT" block in your prompt containing y
 - Use this history to understand follow-up questions, references to previous topics, or ongoing tasks.
 - Do NOT repeat things you have already said if the interviewer is just continuing the conversation.
 """
+

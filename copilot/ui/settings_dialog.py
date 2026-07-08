@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 from copilot.ui.theme import COLORS
-from copilot.core import settings
+from copilot.core.settings import settings_manager, load_settings, save_settings, DEFAULTS, MODELS
 
 class HotkeyLineEdit(QLineEdit):
     def __init__(self, default_key="", parent=None):
@@ -20,6 +20,13 @@ class HotkeyLineEdit(QLineEdit):
         if key_name:
             self.setText(key_name)
     
+    # Map Qt F-keys to their string representations
+    _FKEY_MAP = {
+        Qt.Key_F1: "f1", Qt.Key_F2: "f2", Qt.Key_F3: "f3", Qt.Key_F4: "f4",
+        Qt.Key_F5: "f5", Qt.Key_F6: "f6", Qt.Key_F7: "f7", Qt.Key_F8: "f8",
+        Qt.Key_F9: "f9", Qt.Key_F10: "f10", Qt.Key_F11: "f11", Qt.Key_F12: "f12",
+    }
+
     def get_key_name(self, event):
         key = event.key()
         modifiers = event.modifiers()
@@ -37,27 +44,16 @@ class HotkeyLineEdit(QLineEdit):
             parts.append("alt")
             
         key_str = ""
-        # Handle some special keys or fallback to text
         if Qt.Key_A <= key <= Qt.Key_Z:
             key_str = chr(key).lower()
         elif Qt.Key_0 <= key <= Qt.Key_9:
             key_str = chr(key)
-        elif key == Qt.Key_F1: key_str = "f1"
-        elif key == Qt.Key_F2: key_str = "f2"
-        elif key == Qt.Key_F3: key_str = "f3"
-        elif key == Qt.Key_F4: key_str = "f4"
-        elif key == Qt.Key_F5: key_str = "f5"
-        elif key == Qt.Key_F6: key_str = "f6"
-        elif key == Qt.Key_F7: key_str = "f7"
-        elif key == Qt.Key_F8: key_str = "f8"
-        elif key == Qt.Key_F9: key_str = "f9"
-        elif key == Qt.Key_F10: key_str = "f10"
-        elif key == Qt.Key_F11: key_str = "f11"
-        elif key == Qt.Key_F12: key_str = "f12"
+        elif key in self._FKEY_MAP:
+            key_str = self._FKEY_MAP[key]
         else:
             try:
                 key_str = chr(key).lower()
-            except:
+            except (ValueError, OverflowError):
                 return None
                 
         if not key_str:
@@ -81,7 +77,7 @@ class SettingsDialog(QDialog):
         """)
 
         # Load current settings
-        self.current_settings = settings.load_settings()
+        self.current_settings = load_settings()
 
         main_layout = QVBoxLayout(self)
         
@@ -117,9 +113,9 @@ class SettingsDialog(QDialog):
         self.model_combo = QComboBox()
         self.model_combo.setStyleSheet(f"background-color: {COLORS['surface']}; color: {COLORS['text']}; padding: 4px; border: 1px solid {COLORS['border']}; border-radius: 4px;")
         
-        current_model = self.current_settings.get("model", settings.DEFAULTS["model"])
+        current_model = self.current_settings.get("model", DEFAULTS["model"])
         idx = 0
-        for i, (name, val) in enumerate(settings.MODELS):
+        for i, (name, val) in enumerate(MODELS):
             self.model_combo.addItem(name, val)
             if val == current_model:
                 idx = i
@@ -134,10 +130,10 @@ class SettingsDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
 
-        self.hk_visibility = HotkeyLineEdit(self.current_settings.get("hotkey_toggle_visibility", settings.DEFAULTS["hotkey_toggle_visibility"]))
-        self.hk_ai = HotkeyLineEdit(self.current_settings.get("hotkey_toggle_ai", settings.DEFAULTS["hotkey_toggle_ai"]))
-        self.hk_stt = HotkeyLineEdit(self.current_settings.get("hotkey_toggle_stt", settings.DEFAULTS["hotkey_toggle_stt"]))
-        self.hk_screen = HotkeyLineEdit(self.current_settings.get("hotkey_capture_screen", settings.DEFAULTS["hotkey_capture_screen"]))
+        self.hk_visibility = HotkeyLineEdit(self.current_settings.get("hotkey_toggle_visibility", DEFAULTS["hotkey_toggle_visibility"]))
+        self.hk_ai = HotkeyLineEdit(self.current_settings.get("hotkey_toggle_ai", DEFAULTS["hotkey_toggle_ai"]))
+        self.hk_stt = HotkeyLineEdit(self.current_settings.get("hotkey_toggle_stt", DEFAULTS["hotkey_toggle_stt"]))
+        self.hk_screen = HotkeyLineEdit(self.current_settings.get("hotkey_capture_screen", DEFAULTS["hotkey_capture_screen"]))
 
         layout.addRow("Ocultar/Mostrar UI:", self.hk_visibility)
         layout.addRow("Play/Stop AI:", self.hk_ai)
@@ -161,19 +157,19 @@ class SettingsDialog(QDialog):
         self.spin_silence = QSpinBox()
         self.spin_silence.setRange(100, 5000)
         self.spin_silence.setSingleStep(100)
-        self.spin_silence.setValue(self.current_settings.get("silence_threshold", settings.DEFAULTS["silence_threshold"]))
+        self.spin_silence.setValue(self.current_settings.get("silence_threshold", DEFAULTS["silence_threshold"]))
         self.spin_silence.setStyleSheet(style)
 
         self.spin_max_dur = QDoubleSpinBox()
         self.spin_max_dur.setRange(2.0, 30.0)
         self.spin_max_dur.setSingleStep(1.0)
-        self.spin_max_dur.setValue(self.current_settings.get("vad_max_duration", settings.DEFAULTS["vad_max_duration"]))
+        self.spin_max_dur.setValue(self.current_settings.get("vad_max_duration", DEFAULTS["vad_max_duration"]))
         self.spin_max_dur.setStyleSheet(style)
 
         self.spin_timeout = QDoubleSpinBox()
         self.spin_timeout.setRange(0.5, 5.0)
         self.spin_timeout.setSingleStep(0.1)
-        self.spin_timeout.setValue(self.current_settings.get("vad_silence_timeout", settings.DEFAULTS["vad_silence_timeout"]))
+        self.spin_timeout.setValue(self.current_settings.get("vad_silence_timeout", DEFAULTS["vad_silence_timeout"]))
         self.spin_timeout.setStyleSheet(style)
 
         layout.addRow("Umbral Silencio (RMS):", self.spin_silence)
@@ -193,5 +189,5 @@ class SettingsDialog(QDialog):
             "vad_max_duration": self.spin_max_dur.value(),
             "vad_silence_timeout": self.spin_timeout.value(),
         }
-        settings.save_settings(new_settings)
+        save_settings(new_settings)
         self.accept()

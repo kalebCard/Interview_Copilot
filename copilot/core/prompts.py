@@ -1,5 +1,3 @@
-CATEGORIES = ["Algoritmos", "System Design", "Behavioral", "Inglés", "OOP", "SQL", "General"]
-
 PROMPTS = {
     "Algoritmos": "Focus heavily on time/space complexity, data structures, and optimal approaches.",
     "System Design": "Focus heavily on scalability, databases, microservices, load balancing, and trade-offs.",
@@ -10,6 +8,12 @@ PROMPTS = {
     "General": "Provide a natural, conversational response."
 }
 
-CLASSIFIER_PROMPT = """Analyze the following interview transcription chunk and classify it into exactly ONE of the following categories:
-Algoritmos, System Design, Behavioral, Inglés, OOP, SQL, General.
-Output ONLY the category name, nothing else."""
+# Derived from PROMPTS to guarantee they stay in sync.
+CATEGORIES = list(PROMPTS.keys())
+
+CLASSIFIER_PROMPT = (
+    "Analyze the following interview transcription chunk and classify it into exactly "
+    f"ONE of the following categories:\n{', '.join(CATEGORIES)}.\n"
+    "Output ONLY the category name, nothing else."
+)
+
