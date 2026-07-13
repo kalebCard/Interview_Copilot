@@ -41,31 +41,6 @@ def _load_dotenv() -> None:
 
 _load_dotenv()
 
-GEMINI_MODEL = "google/gemini-2.5-flash"
-
-from copilot.core.settings import settings_manager
-
-# ---------------------------------------------------------------------------
-# Reactive getters — read live from settings_manager so that changes made
-# through the Settings dialog take effect without restarting the app.
-# ---------------------------------------------------------------------------
-def get_vad_block_duration() -> float:
-    return float(settings_manager.get("vad_block_duration", 0.25))
-
-def get_vad_silence_timeout() -> float:
-    return float(settings_manager.get("vad_silence_timeout", 1.0))
-
-def get_vad_max_duration() -> float:
-    return float(settings_manager.get("vad_max_duration", 10.0))
-
-def get_vad_max_duration_stt() -> float:
-    return float(settings_manager.get("vad_max_duration_stt", 2.5))
-
-def get_silence_threshold() -> int:
-    return int(settings_manager.get("silence_threshold", 500))
-
-def get_sample_rate() -> int:
-    return int(settings_manager.get("sample_rate", 16000))
 
 
 def load_context() -> Optional[str]:
@@ -94,7 +69,7 @@ def load_context() -> Optional[str]:
         
     return "\n\n".join(content_blocks)
 
-def build_system_prompt(context_content: str, category_prompt: str = "") -> str:
+def build_system_prompt(context_content: str) -> str:
     return f"""You are an expert real-time interview assistant for the following candidate. \
 Your purpose is to help this candidate answer ALL types of interview questions \
 (technical, behavioral, HR, personal, and cultural fit) naturally and confidently, \
@@ -106,8 +81,15 @@ based on their actual experience.
 {context_content}
 ======================================================
 
-SPECIALIZED INSTRUCTIONS:
-{category_prompt}
+AUTOMATIC QUESTION CLASSIFICATION:
+Before responding, classify the question into ONE of these categories and apply the corresponding strategy:
+- Algoritmos: Focus heavily on time/space complexity, data structures, and optimal approaches.
+- System Design: Focus heavily on scalability, databases, microservices, load balancing, and trade-offs.
+- Behavioral: Use the STAR method (Situation, Task, Action, Result) implicitly in your script, drawing from the candidate's context.
+- Inglés: Ensure the English is absolutely perfect, highly professional, and showcases strong communication skills. Keep it conversational.
+- OOP: Focus on SOLID principles, design patterns, inheritance, polymorphism, and encapsulation.
+- SQL: Focus on JOINs, indexing, normalization, window functions, and query optimization.
+- General: Provide a natural, conversational response.
 
 INSTRUCTIONS — follow these EXACTLY:
 
@@ -120,11 +102,13 @@ CONTEXT-AWARE FORMATTING:
 
 Always format your output EXACTLY like this:
 
+[CATEGORÍA: <category name>]
 [ESPAÑOL]: <Explica brevemente en español qué pide el entrevistador y DALE INDICACIONES/CONSEJOS RÁPIDOS al candidato de cómo resolverlo (ej. qué estructura de datos usar, qué conceptos mencionar, qué hacer a continuación).>
 [INGLÉS]: 
 <Escribe AQUÍ ÚNICAMENTE LA RESPUESTA EXACTA que el candidato debe leer en voz alta. NO expliques la pregunta en inglés, NO saludes, NO des consejos. Escribe solo el guion directo y natural que el candidato dirá>
 
 Example:
+[CATEGORÍA: System Design]
 [ESPAÑOL]: Te está pidiendo diseñar un sistema de reservas. Sugiero usar una arquitectura de microservicios y mencionar balanceadores de carga.
 [INGLÉS]:
 For the reservation system, I would start by breaking it down into microservices...
@@ -148,4 +132,5 @@ You will receive a "PAST CONVERSATION CONTEXT" block in your prompt containing y
 - Use this history to understand follow-up questions, references to previous topics, or ongoing tasks.
 - Do NOT repeat things you have already said if the interviewer is just continuing the conversation.
 """
+
 

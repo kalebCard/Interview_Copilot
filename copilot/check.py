@@ -31,16 +31,16 @@ def run_check() -> None:
     try:
         import pyaudiowpatch as pyaudio
         pa = pyaudio.PyAudio()
-        n_devices = pa.get_device_count()
-        pa.terminate()
-        print(f"  [OK]    PyAudio disponible ({n_devices} dispositivos de audio)")
-        pa2 = pyaudio.PyAudio()
         try:
-            wasapi = pa2.get_host_api_info_by_type(pyaudio.paWASAPI)
-            print(f"  [OK]    WASAPI loopback soportado (índice API: {wasapi['index']})")
-        except Exception:
-            print("  [WARN]  WASAPI no disponible — se usará el micrófono")
-        pa2.terminate()
+            n_devices = pa.get_device_count()
+            print(f"  [OK]    PyAudio disponible ({n_devices} dispositivos de audio)")
+            try:
+                wasapi = pa.get_host_api_info_by_type(pyaudio.paWASAPI)
+                print(f"  [OK]    WASAPI loopback soportado (índice API: {wasapi['index']})")
+            except Exception:
+                print("  [WARN]  WASAPI no disponible — se usará el micrófono")
+        finally:
+            pa.terminate()
     except ImportError:
         print("  [FAIL]  PyAudio no instalado  ->  pip install PyAudioWPatch")
         all_ok = False

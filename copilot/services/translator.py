@@ -2,8 +2,8 @@
 import threading
 import queue
 import io
-import time
 import re
+import concurrent.futures
 import speech_recognition as sr
 from copilot.core.logger import get_logger
 
@@ -14,7 +14,7 @@ try:
 except ImportError:
     GoogleTranslator = None
     logger.error("deep-translator no instalado. Ejecuta: pip install deep-translator")
-from typing import Callable, Optional, List
+from typing import Callable, Optional
 
 MAX_CONCURRENT_PROCESSING = 3
 
@@ -53,13 +53,13 @@ class TranscriptionWorker(threading.Thread):
         self.error_callback = error_callback
         self._stop_event = threading.Event()
         
-        self.active_threads = 0
-        self.thread_count_lock = threading.Lock()
         self.recognizer = sr.Recognizer()
         self.translator = GoogleTranslator(source='en', target='es') if GoogleTranslator else None
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=MAX_CONCURRENT_PROCESSING)
         
     def stop(self) -> None:
         self._stop_event.set()
+        self.executor.shutdown(wait=False)
 
     def _process_audio_task(self, wav_bytes: bytes) -> None:
         try:
@@ -98,21 +98,10 @@ class TranscriptionWorker(threading.Thread):
 
         except Exception as e:
             logger.error(f"Excepción inesperada en _process_audio_task: {e}")
-        finally:
-            with self.thread_count_lock:
-                self.active_threads -= 1
 
     def run(self) -> None:
-        logger.info("TranscriptionWorker iniciado (Concurrente).")
+        logger.info("TranscriptionWorker iniciado (ThreadPoolExecutor).")
         while not self._stop_event.is_set():
-
-            with self.thread_count_lock:
-                current_active = self.active_threads
-                
-            if current_active >= MAX_CONCURRENT_PROCESSING:
-                time.sleep(0.05)
-                continue
-
             try:
                 wav_bytes = self.stt_queue.get(timeout=0.2)
             except queue.Empty:
@@ -121,10 +110,6 @@ class TranscriptionWorker(threading.Thread):
             if not wav_bytes:
                 continue
 
-            with self.thread_count_lock:
-                self.active_threads += 1
-            
-            t = threading.Thread(target=self._process_audio_task, args=(wav_bytes,), daemon=True)
-            t.start()
+            self.executor.submit(self._process_audio_task, wav_bytes)
                 
         logger.info("TranscriptionWorker finalizado.")

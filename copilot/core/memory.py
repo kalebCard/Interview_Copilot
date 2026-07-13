@@ -5,7 +5,6 @@ from typing import List, Tuple
 from copilot.core.paths import DB_PATH
 from copilot.core.logger import get_logger
 
-import tiktoken
 
 logger = get_logger(__name__)
 
@@ -61,11 +60,9 @@ def get_recent_context(session_id: str, max_tokens: int = 1500) -> List[str]:
     context: List[str] = []
     current_tokens: float = 0.0
     
-    try:
-        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
-        def estimate_tokens(text): return len(encoding.encode(text))
-    except Exception:
-        def estimate_tokens(text): return len(text.split()) * 1.3
+    def estimate_tokens(text: str) -> float:
+        return len(text.split()) * 1.3
+
         
     for r in rows:
         turn = f"Question: {r['question']}\nAnswer: {r['answer']}"

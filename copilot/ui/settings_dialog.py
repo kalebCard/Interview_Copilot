@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 from copilot.ui.theme import COLORS
-from copilot.core.settings import settings_manager, load_settings, save_settings, DEFAULTS, MODELS
+from copilot.core.settings import settings_manager, DEFAULTS, MODELS
 
 class HotkeyLineEdit(QLineEdit):
     def __init__(self, default_key="", parent=None):
@@ -77,7 +77,8 @@ class SettingsDialog(QDialog):
         """)
 
         # Load current settings
-        self.current_settings = load_settings()
+        settings_manager.load()
+        self.current_settings = settings_manager.settings
 
         main_layout = QVBoxLayout(self)
         
@@ -189,5 +190,6 @@ class SettingsDialog(QDialog):
             "vad_max_duration": self.spin_max_dur.value(),
             "vad_silence_timeout": self.spin_timeout.value(),
         }
-        save_settings(new_settings)
+        settings_manager.settings.update(new_settings)
+        settings_manager.save()
         self.accept()

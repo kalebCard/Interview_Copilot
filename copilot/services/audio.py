@@ -13,7 +13,7 @@ try:
 except ImportError:
     pyaudio = None
 
-from copilot.core.config import (
+from copilot.core.settings import (
     get_vad_block_duration,
     get_vad_silence_timeout,
     get_vad_max_duration,

@@ -1,7 +1,7 @@
 import pytest
 import queue
 from copilot.services.audio import VADProcessor
-from copilot.core.config import get_sample_rate
+from copilot.core.settings import get_sample_rate
 
 def test_vad_process_frame_silence():
     ai_queue = queue.Queue()

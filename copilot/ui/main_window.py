@@ -17,7 +17,7 @@ from copilot.core.logger import get_logger
 from copilot.ui.theme import COLORS, MAIN_STYLE
 from copilot.ui.title_bar import TitleBar
 from copilot.core.app_controller import AppController
-from copilot.core.settings import settings_manager, load_settings, save_settings, DEFAULTS, MODELS
+from copilot.core.settings import settings_manager, DEFAULTS, MODELS
 from copilot.ui.settings_dialog import SettingsDialog
 
 logger = get_logger(__name__)
@@ -66,7 +66,7 @@ class CopilotApp(QMainWindow):
         self.subtitle_idle_timer.setSingleShot(True)
         self.subtitle_idle_timer.timeout.connect(self._clear_subtitle)
 
-        load_settings()
+        settings_manager.load()
         self._register_hotkeys()
 
         self._configure_window()
@@ -361,6 +361,9 @@ class CopilotApp(QMainWindow):
         text_escaped = html.escape(text)
         html_body = text_escaped.replace('\n', '<br>')
         
+        # Strip the inline classification tag (used only for memory, not display)
+        html_body = re.sub(r'\[CATEGORÍA:[^\]]*\]', '', html_body, flags=re.IGNORECASE)
+        
         pregunta_match = re.search(r'\[ESPAÑOL\]:(.*?)(?=\[INGLÉS\]|$)', html_body, flags=re.IGNORECASE | re.DOTALL)
         pregunta_texto = pregunta_match.group(1).strip() if pregunta_match else "(Contexto deducido)"
         html_body = re.sub(r'\[ESPAÑOL\]:.*?(?=\[INGLÉS\]|$)', '', html_body, flags=re.IGNORECASE | re.DOTALL)
@@ -388,8 +391,9 @@ class CopilotApp(QMainWindow):
 
     def _show_error(self, err_msg: str):
         self._set_status("Error", "error")
-        html = f'<div style="color: {COLORS["accent_red"]}; margin-bottom: 15px;">❌ <b>Error:</b> {err_msg}</div>'
-        self.text_area.append(html)
+        safe_msg = html.escape(err_msg)
+        error_html = f'<div style="color: {COLORS["accent_red"]}; margin-bottom: 15px;">❌ <b>Error:</b> {safe_msg}</div>'
+        self.text_area.append(error_html)
 
     def _show_startup_message(self):
         selected_model = settings_manager.get("model")

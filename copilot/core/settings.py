@@ -62,11 +62,25 @@ class SettingsManager:
 
 settings_manager = SettingsManager()
 
-def load_settings() -> Dict[str, Any]:
-    settings_manager.load()
-    return settings_manager.settings
+# ---------------------------------------------------------------------------
+# Reactive getters — read live from settings_manager so that changes made
+# through the Settings dialog take effect without restarting the app.
+# ---------------------------------------------------------------------------
+def get_vad_block_duration() -> float:
+    return float(settings_manager.get("vad_block_duration", 0.25))
 
-def save_settings(data: Dict[str, Any]) -> None:
-    settings_manager.settings.update(data)
-    settings_manager.save()
+def get_vad_silence_timeout() -> float:
+    return float(settings_manager.get("vad_silence_timeout", 1.0))
+
+def get_vad_max_duration() -> float:
+    return float(settings_manager.get("vad_max_duration", 10.0))
+
+def get_vad_max_duration_stt() -> float:
+    return float(settings_manager.get("vad_max_duration_stt", 2.5))
+
+def get_silence_threshold() -> int:
+    return int(settings_manager.get("silence_threshold", 500))
+
+def get_sample_rate() -> int:
+    return int(settings_manager.get("sample_rate", 16000))
 
